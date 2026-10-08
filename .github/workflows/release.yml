@@ -1,0 +1,43 @@
+# Publica uma versao nova da app quando se faz push de uma tag "v1.2.3".
+# A app instalada ve a Release e atualiza-se sozinha (Definicoes -> Atualizacoes).
+#
+#   1. muda "version" no package.json (ex.: 1.1.0) e faz commit
+#   2. git tag v1.1.0 && git push origin v1.1.0
+name: Publicar versao
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # para criar a Release e carregar o instalador
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # A tag e a versao do package.json tem de bater certo: e pela versao que
+      # a app sabe se a da Release e mais nova do que a dela.
+      - name: Confirmar a versao
+        shell: bash
+        run: |
+          versao="v$(node -p "require('./package.json').version")"
+          if [ "$versao" != "$GITHUB_REF_NAME" ]; then
+            echo "A tag $GITHUB_REF_NAME nao bate com o package.json ($versao)."
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Construir e publicar
+        run: npm run release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,4 +1,4 @@
-import { chamar, esc, eur, aviso, valorEuro, icone, caixa, ligar, confirmar, plural } from '../util.js';
+import { chamar, esc, eur, aviso, valorEuro, icone, caixa, ligar, confirmar, plural, barra } from '../util.js';
 import { estado, recarregar, aplicarTema, temaEscolhido } from '../app.js';
 
 export async function desenhar(raiz) {
@@ -7,6 +7,7 @@ export async function desenhar(raiz) {
   const moeda = d.moeda || '€';
   const tema = temaEscolhido();
   const copias = (await chamar('copias.listar')) || [];
+  estado.atualizacao = (await chamar('atualizacoes.ler')) || estado.atualizacao;
 
   raiz.innerHTML = `
     <div class="cabeca">
@@ -84,10 +85,14 @@ export async function desenhar(raiz) {
       </section>
 
       <section class="def-secao">
+        <div><h3>Atualizações</h3><p>A app procura sozinha uma versão nova ao abrir e de 6 em 6 horas, e descarrega-a em segundo plano. Os teus dados não são tocados, e fica uma cópia de segurança antes de instalar.</p></div>
+        <div data-atualizacao>${blocoAtualizacao(estado.atualizacao)}</div>
+      </section>
+
+      <section class="def-secao">
         <div><h3>Os teus dados</h3><p>Ficam só neste computador, fora da pasta da aplicação. Instalar uma versão nova nunca lhes toca, e desinstalar também não.</p></div>
         <div>
           <div class="lista-chaves">
-            <div><span>Versão</span><b>${esc(info.versao || '?')}</b></div>
             <div><span>Base de dados</span><b class="pequeno">${esc(info.base || '')}</b></div>
             <div><span>Pasta</span><b class="pequeno">${esc(info.pastaDados || '')}</b></div>
           </div>
@@ -161,6 +166,19 @@ export async function desenhar(raiz) {
     await recarregar();
   });
 
+  ligar(raiz, 'click', '[data-procurar-versao]', async (e, el) => {
+    el.disabled = true;
+    estado.atualizacao = await chamar('atualizacoes.procurar').catch(() => estado.atualizacao);
+    pintarAtualizacao(estado.atualizacao);
+  });
+
+  ligar(raiz, 'click', '[data-instalar-versao]', async () => {
+    const ok = await confirmar('Instalar a versão nova?',
+      'A app fecha, instala a versão nova e volta a abrir sozinha. Fica uma cópia de segurança antes.',
+      { confirmar: 'Reiniciar e instalar', perigo: false });
+    if (ok) await chamar('atualizacoes.instalar');
+  });
+
   ligar(raiz, 'click', '[data-tema]', (e, el) => {
     aplicarTema(el.dataset.tema);
     raiz.querySelectorAll('[data-tema]').forEach((b) => b.classList.toggle('ativo', b === el));
@@ -199,9 +217,45 @@ const MOTIVOS = {
   'antes-de-importar': 'Antes de importar um Excel',
   'antes-de-apagar-encomenda': 'Antes de apagar uma encomenda',
   'antes-de-juntar': 'Antes de juntar camisolas',
-  'antes-de-restaurar': 'Antes de restaurar'
+  'antes-de-restaurar': 'Antes de restaurar',
+  'antes-de-atualizar': 'Antes de instalar uma versão nova',
+  'antes-de-corrigir-precos': 'Antes de rever preços'
 };
 
 function motivoTexto(m) {
   return MOTIVOS[m] || m;
+}
+
+/** Redesenha so o bloco das atualizacoes; o app.js chama-o quando o estado muda. */
+export function pintarAtualizacao(a) {
+  const el = document.querySelector('[data-atualizacao]');
+  if (el) el.innerHTML = blocoAtualizacao(a);
+}
+
+function blocoAtualizacao(a = {}) {
+  const versao = `<div class="lista-chaves"><div><span>Versão instalada</span><b>${esc(a.versao || estado.info.versao || '?')}</b></div></div>`;
+  const procurar = (texto = 'Procurar agora') =>
+    `<button class="btn" data-procurar-versao>${icone('relogio', 16)}${texto}</button>`;
+  const linha = (conteudo) => `<div class="linha-flex" style="margin-top:14px;flex-wrap:wrap;gap:12px">${conteudo}</div>`;
+  const nota = (t) => `<span class="pequeno dim" style="font-weight:600">${t}</span>`;
+
+  switch (a.fase) {
+    case 'dev':
+      return versao + linha(nota('As atualizações só funcionam na app instalada, não com <code>npm start</code>.'));
+    case 'a-procurar':
+      return versao + linha(nota('A procurar uma versão nova…'));
+    case 'a-descarregar':
+      return versao + `<div style="margin-top:14px">
+        <div class="pequeno" style="font-weight:700;margin-bottom:8px">A descarregar a versão ${esc(a.versaoNova || '')} — ${a.progresso || 0}%</div>
+        ${barra(a.progresso || 0)}</div>`;
+    case 'pronta':
+      return versao + `<div style="margin-top:14px">${caixa(`<b>A versão ${esc(a.versaoNova || '')} está pronta.</b> Instala-se ao fechar a app, ou agora:`, 'ok')}</div>`
+        + linha(`<button class="btn primario" data-instalar-versao>${icone('visto', 16)}Reiniciar e instalar</button>`);
+    case 'atualizada':
+      return versao + linha(procurar() + nota(`Tens a versão mais recente${a.verificadaEm ? ` · vista ${esc(quando(a.verificadaEm))}` : ''}.`));
+    case 'erro':
+      return versao + linha(procurar('Tentar outra vez') + nota(`Não foi possível procurar: ${esc(a.erro || '')}`));
+    default:
+      return versao + linha(procurar());
+  }
 }

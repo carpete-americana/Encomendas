@@ -123,6 +123,7 @@ app.whenReady().then(() => {
   registarIpc({ janela: () => janela });
   menu();
   criarJanela();
+  require('./servicos/atualizacoes').iniciar({ notificar: (estado) => enviar('atualizacao', estado) });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) criarJanela();

@@ -9,6 +9,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   chamar: (metodo, ...args) => ipcRenderer.invoke('chamar', metodo, ...args),
 
+  aoAtualizacao: (callback) => {
+    ipcRenderer.on('atualizacao', (_e, estado) => callback(estado));
+  },
+
   aoAtalho: (callback) => {
     const canais = ['atalho:nova-encomenda', 'atalho:importar', 'atalho:pagina'];
     for (const c of canais) {

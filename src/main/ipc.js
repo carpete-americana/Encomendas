@@ -13,6 +13,7 @@ const fotos = require('./servicos/fotos');
 const { exportar, nomeSugerido } = require('./servicos/exportar');
 const { analisar, importar } = require('./servicos/importar');
 const copias = require('./servicos/copias');
+const atualizacoes = require('./servicos/atualizacoes');
 const { calcularTotais } = require('./servicos/totais');
 const { htmlCliente, linhasParaCliente } = require('./servicos/imagem-cliente');
 
@@ -193,6 +194,11 @@ function registarIpc({ janela }) {
       copias.criar('antes-de-importar');
       return importar(caminho, opcoes || {});
     },
+
+    // --- atualizacoes ----------------------------------------------------
+    'atualizacoes.ler': () => atualizacoes.ler(),
+    'atualizacoes.procurar': async () => { await atualizacoes.procurar(); return atualizacoes.ler(); },
+    'atualizacoes.instalar': () => atualizacoes.instalar(),
 
     // --- copias de seguranca ---------------------------------------------
     'copias.listar': () => copias.listar(),
