@@ -247,6 +247,7 @@ export async function editarCamisola(id) {
         <div>
           <div data-caixa-previa>${previa(fotoNova)}</div>
           <button class="btn pequeno" data-foto style="width:100%;margin-top:10px">${icone('foto', 15)}${fotoNova ? 'Trocar foto' : 'Escolher foto'}</button>
+          <button class="btn pequeno" data-colar-foto style="width:100%;margin-top:4px" title="Usa a imagem copiada (Ctrl+C). Também dá com Ctrl+V aqui na ficha.">${icone('copiar', 15)}Colar foto</button>
           <button class="btn pequeno fantasma" data-sem-foto style="width:100%;margin-top:4px;${fotoNova ? '' : 'display:none'}">Tirar foto</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:14px">
@@ -310,6 +311,22 @@ export async function editarCamisola(id) {
       });
 
       botaoSem.addEventListener('click', () => { fotoNova = null; mostrar(null); });
+
+      const colar = async () => {
+        const nome = await chamar('camisolas.colarFoto', null);
+        fotoNova = nome;
+        mostrar(nome);
+        aviso('Fica quando guardares a camisola.', 'ok', 'Foto colada');
+      };
+      m.querySelector('[data-colar-foto]').addEventListener('click', () => colar().catch(() => {}));
+      // Ctrl+V com uma imagem copiada vira a foto. Texto copiado continua a
+      // colar-se normalmente nos campos.
+      m.addEventListener('paste', (e) => {
+        const temImagem = [...(e.clipboardData?.items || [])].some((i) => i.type.startsWith('image/'));
+        if (!temImagem) return;
+        e.preventDefault();
+        colar().catch(() => {});
+      });
 
       m.querySelector('[data-juntar]')?.addEventListener('click', async () => {
         if (await juntarCamisolas(c.id)) fechar(true);

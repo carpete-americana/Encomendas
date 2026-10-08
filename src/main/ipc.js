@@ -13,6 +13,7 @@ const fotos = require('./servicos/fotos');
 const { exportar, nomeSugerido } = require('./servicos/exportar');
 const { analisar, importar } = require('./servicos/importar');
 const copias = require('./servicos/copias');
+const atualizacoes = require('./servicos/atualizacoes');
 const { calcularTotais } = require('./servicos/totais');
 const { htmlCliente, linhasParaCliente } = require('./servicos/imagem-cliente');
 
@@ -77,6 +78,18 @@ function registarIpc({ janela }) {
       });
       if (r.canceled || !r.filePaths[0]) return null;
       const nome = await fotos.guardarDeFicheiro(r.filePaths[0], { maxPx: definicoes.ler('foto_max_px', 420) });
+      if (id) camisolas.atualizar(id, { foto: nome });
+      return nome;
+    },
+    // A foto copiada no browser ("Copiar imagem") ou num print, sem passar por
+    // um ficheiro. Copiar um ficheiro no explorador nao conta: isso copia o
+    // caminho, nao a imagem, e para esses ha o "Escolher foto".
+    'camisolas.colarFoto': async (id) => {
+      const imagem = clipboard.readImage();
+      if (imagem.isEmpty()) {
+        throw new Error('Não há nenhuma imagem copiada. Copia a foto (botão direito → Copiar imagem) e tenta outra vez.');
+      }
+      const nome = await fotos.guardar(imagem.toPNG(), { maxPx: definicoes.ler('foto_max_px', 420) });
       if (id) camisolas.atualizar(id, { foto: nome });
       return nome;
     },
@@ -181,6 +194,11 @@ function registarIpc({ janela }) {
       copias.criar('antes-de-importar');
       return importar(caminho, opcoes || {});
     },
+
+    // --- atualizacoes ----------------------------------------------------
+    'atualizacoes.ler': () => atualizacoes.ler(),
+    'atualizacoes.procurar': async () => { await atualizacoes.procurar(); return atualizacoes.ler(); },
+    'atualizacoes.instalar': () => atualizacoes.instalar(),
 
     // --- copias de seguranca ---------------------------------------------
     'copias.listar': () => copias.listar(),

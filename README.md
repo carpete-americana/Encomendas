@@ -60,6 +60,13 @@ Botão **Exportar Excel** na página da encomenda, ou:
 node tools/exportar-cli.js <id-da-encomenda>
 ```
 
+## Fotos do catálogo
+
+Na ficha da camisola: **Escolher foto** (um ficheiro), ou **Colar foto** para
+usar a imagem que está copiada — no browser, botão direito → *Copiar imagem*.
+Com a ficha aberta, Ctrl+V faz o mesmo. Copiar um ficheiro no explorador não
+serve: isso copia o caminho, não a imagem.
+
 ## Imagem para o cliente
 
 Na página da encomenda, cada cliente tem um botão **Imagem**. Gera uma imagem
@@ -95,7 +102,31 @@ npx electron tools/fluxo.js          # conduz o interface: adicionar, editar, ma
 npm run dist
 ```
 
-Sai um instalador NSIS em `dist/`. Falta-lhe um ícone em `build/icon.ico`.
+Sai um instalador NSIS em `dist/`.
+
+## Publicar uma versão nova
+
+A app instalada procura sozinha uma versão nova (ao abrir e de 6 em 6 horas),
+descarrega-a em segundo plano e instala-a ao fechar, ou já, pelo botão em
+**Definições → Atualizações**. Vai buscá-la às Releases deste repositório no
+GitHub, por isso **o repositório tem de ser público**.
+
+Para publicar:
+
+```bash
+# 1. sobe a versao no package.json (ex.: 1.0.0 -> 1.1.0)
+npm version minor        # ou: patch (1.0.1), major (2.0.0)
+# 2. envia o commit e a tag
+git push && git push --tags
+```
+
+O GitHub Actions (`.github/workflows/release.yml`) corre os testes numa
+máquina Windows, constrói o instalador e publica-o como Release. A tag tem de
+bater com a versão do `package.json`, senão a publicação pára.
+
+A primeira versão tem de ser instalada à mão (o instalador da Release); dessa
+em diante atualiza-se sozinha. Sem assinatura de código, o Windows pode mostrar
+o aviso do SmartScreen nessa primeira instalação.
 
 ## Decisões que não se devem desfazer sem pensar
 

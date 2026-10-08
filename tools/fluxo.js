@@ -249,6 +249,53 @@ app.whenReady().then(async () => {
   verificar('nao abriu janela nenhuma', (await js("document.querySelectorAll('.fundo-modal').length")) === 0);
 
   // ---------------------------------------------------------------------
+  console.log('\nColar a foto de uma camisola a partir do Ctrl+C');
+  const { nativeImage } = require('electron');
+  const sharp = require('sharp');
+  const camisolaSemFoto = (await jsA("await window.api.chamar('camisolas.listar', {})"))
+    .find((c) => c.nome === 'Sporting 2000/01');
+
+  clipboard.clear();
+  await js(`location.hash = '#/catalogo'`);
+  await esperar(800);
+  await js(`document.querySelector('[data-abrir="${camisolaSemFoto.id}"]').click()`);
+  await esperar(700);
+  await js("document.querySelector('[data-colar-foto]').click()");
+  await esperar(700);
+  verificar('sem imagem copiada avisa em vez de rebentar',
+    (await js("[...document.querySelectorAll('.toast.erro')].some(t => t.textContent.includes('imagem copiada'))")));
+
+  const png = await sharp({ create: { width: 800, height: 600, channels: 3, background: '#1E8C3A' } }).png().toBuffer();
+  clipboard.writeImage(nativeImage.createFromBuffer(png));
+  await js("document.querySelector('[data-colar-foto]').click()");
+  await esperar(1200);
+  verificar('a previa mostra a foto colada',
+    (await js("document.querySelector('[data-previa]').style.backgroundImage")).startsWith('url('));
+  await js("document.querySelector('.fundo-modal [data-ok]').click()");
+  await esperar(800);
+  const comFoto = await jsA(`await window.api.chamar('camisolas.porId', ${camisolaSemFoto.id})`);
+  verificar('a camisola ficou com a foto colada', !!comFoto.foto);
+  const dim = comFoto.foto ? await sharp(path.join(pasta, 'fotos', comFoto.foto)).metadata() : {};
+  verificar('reduzida como as outras fotos', dim.width === 420, `${dim.width}x${dim.height}`);
+
+  console.log('\nCtrl+V com a ficha aberta tambem cola a foto');
+  const outra = (await jsA("await window.api.chamar('camisolas.listar', {})")).find((c) => !c.foto);
+  await js(`document.querySelector('[data-abrir="${outra.id}"]').click()`);
+  await esperar(700);
+  const azul = await sharp({ create: { width: 300, height: 500, channels: 3, background: '#1D4ED8' } }).png().toBuffer();
+  clipboard.writeImage(nativeImage.createFromBuffer(azul));
+  await js("document.querySelector('.fundo-modal [name=\"nome\"]').focus()");
+  const nomeAntes = await js("document.querySelector('.fundo-modal [name=\"nome\"]').value");
+  janela.webContents.paste();
+  await esperar(1200);
+  verificar('o Ctrl+V meteu a foto na previa',
+    (await js("document.querySelector('[data-previa]').style.backgroundImage")).startsWith('url('));
+  verificar('e nao escreveu nada no campo do nome',
+    (await js("document.querySelector('.fundo-modal [name=\"nome\"]').value")) === nomeAntes);
+  await js("document.querySelector('.fundo-modal [data-ok]').click()");
+  await esperar(800);
+
+  // ---------------------------------------------------------------------
   console.log(`\n${passos - falhas.length}/${passos} verificacoes passaram.`);
   if (falhas.length) {
     console.log('\nFalhas:');

@@ -1,4 +1,4 @@
-import { tentar, $, $$, desligarTudo, icone } from './util.js';
+import { tentar, $, $$, desligarTudo, icone, aviso } from './util.js';
 import * as painel from './paginas/painel.js';
 import * as encomendas from './paginas/encomendas.js';
 import * as encomenda from './paginas/encomenda.js';
@@ -10,7 +10,7 @@ import * as definicoes from './paginas/definicoes.js';
 const PAGINAS = { painel, encomendas, encomenda, catalogo, clientes, cliente, definicoes };
 
 /** Estado partilhado que quase todas as paginas leem (moeda, tamanhos, estados). */
-export const estado = { definicoes: {}, tamanhos: [], info: {} };
+export const estado = { definicoes: {}, tamanhos: [], info: {}, atualizacao: {} };
 
 async function recarregarEstado() {
   estado.definicoes = (await tentar('definicoes.mapa')) || {};
@@ -100,6 +100,16 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 // ------------------------------------------------------------------ arranque
 
 window.addEventListener('hashchange', desenhar);
+
+window.api.aoAtualizacao(async (a) => {
+  const antes = estado.atualizacao?.fase;
+  estado.atualizacao = a;
+  const { pintarAtualizacao } = await import('./paginas/definicoes.js');
+  pintarAtualizacao(a);
+  if (a.fase === 'pronta' && antes !== 'pronta') {
+    aviso('Instala-se quando fechares a app, ou já em Definições.', 'ok', `Versão ${a.versaoNova} pronta`);
+  }
+});
 
 window.api.aoAtalho(async (tipo, valor) => {
   if (tipo === 'pagina') location.hash = `#/${valor}`;
