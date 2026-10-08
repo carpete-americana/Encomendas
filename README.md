@@ -111,18 +111,21 @@ descarrega-a em segundo plano e instala-a ao fechar, ou já, pelo botão em
 **Definições → Atualizações**. Vai buscá-la às Releases deste repositório no
 GitHub, por isso **o repositório tem de ser público**.
 
-Para publicar:
+**Cada merge para o `main` publica uma versão nova sozinho.** O GitHub Actions
+(`.github/workflows/release.yml`) corre os testes numa máquina Windows, sobe o
+último número da versão (1.1.0 → 1.1.1), grava-a no `main`, constrói o
+instalador e publica-o como Release.
 
-```bash
-# 1. sobe a versao no package.json (ex.: 1.0.0 -> 1.1.0)
-npm version minor        # ou: patch (1.0.1), major (2.0.0)
-# 2. envia o commit e a tag
-git push && git push --tags
-```
-
-O GitHub Actions (`.github/workflows/release.yml`) corre os testes numa
-máquina Windows, constrói o instalador e publica-o como Release. A tag tem de
-bater com a versão do `package.json`, senão a publicação pára.
+- Merges que só mexem em documentação (`.md`) não fazem versão nova.
+- Para uma mudança maior, sobe a versão à mão antes do merge, e o workflow usa
+  essa em vez de somar outra:
+  ```bash
+  npm version minor --no-git-tag-version   # 1.1.x -> 1.2.0
+  ```
+- O workflow faz um commit "Versao x.y.z" no `main`: faz `git pull` antes de
+  voltares a trabalhar.
+- Se os testes ou a build falharem, não sai versão nenhuma; o erro fica no
+  separador *Actions*. Também dá para publicar à mão por lá ("Run workflow").
 
 A primeira versão tem de ser instalada à mão (o instalador da Release); dessa
 em diante atualiza-se sozinha. Sem assinatura de código, o Windows pode mostrar
