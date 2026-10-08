@@ -222,6 +222,8 @@ function grupo(g, moeda) {
           ${t.porDevolver ? `<button class="btn pequeno" data-bloco-devolvido="${g.cliente_id}"
                   title="Marca como devolvidas as que v\u00e3o de volta">${icone('voltar', 15)}Devolvi tudo</button>` : ''}
           <button class="btn pequeno" data-bloco-pago="${g.cliente_id}" ${t.nPagas === t.nCamisolas ? 'disabled' : ''}>${icone('euro', 15)}Tudo pago</button>
+          <button class="btn pequeno" data-imagem="${g.cliente_id}" ${t.nCamisolas - t.paraDevolver ? '' : 'disabled'}
+                  title="Copia uma imagem com as camisolas e o total, para colar na conversa com ${esc(nomeProprio(g.cliente_nome))}">${icone('foto', 15)}Imagem</button>
           <button class="btn fantasma icone pequeno" data-pre-cliente="${g.cliente_id}" title="Adicionar camisola a ${esc(nomeProprio(g.cliente_nome))}">${icone('mais', 16)}</button>
         </div>
       </header>
@@ -519,6 +521,8 @@ function ligarEventos(raiz) {
     await refrescar(raiz);
   });
 
+  ligar(raiz, 'click', '[data-imagem]', (e, el) => imagemCliente(Number(el.dataset.imagem), el));
+
   ligar(raiz, 'click', '[data-pre-cliente]', (e, el) => {
     const g = atual.grupos.find((x) => x.cliente_id === Number(el.dataset.preCliente));
     campo('cliente').value = nomeProprio(g.cliente_nome);
@@ -593,3 +597,22 @@ async function exportar() {
   });
 }
 
+
+/**
+ * Copia para a area de transferencia a imagem de um cliente: as camisolas
+ * dele e o que tem a pagar, para colar na conversa e ele confirmar. Nunca leva
+ * o preco do fornecedor. Nao abre janela nem grava ficheiro: e so o Ctrl+C.
+ */
+async function imagemCliente(clienteId, botao) {
+  const g = atual.grupos.find((x) => x.cliente_id === clienteId);
+  const antes = botao.innerHTML;
+  botao.disabled = true;
+  botao.innerHTML = `${icone('relogio', 15)}A preparar…`; // demora cerca de um segundo
+  try {
+    await chamar('imagens.copiar', atual.id, clienteId);
+    aviso(`Já podes colar a imagem na conversa com ${nomeProprio(g.cliente_nome)}.`, 'ok', 'Imagem copiada');
+  } finally {
+    botao.disabled = false;
+    botao.innerHTML = antes;
+  }
+}

@@ -2,7 +2,7 @@
 
 const path = require('path');
 const os = require('os');
-const { ipcMain, dialog, shell, app } = require('electron');
+const { ipcMain, dialog, shell, app, clipboard, nativeImage } = require('electron');
 
 const db = require('./db');
 const definicoes = require('./db/repos/definicoes');
@@ -14,6 +14,7 @@ const { exportar, nomeSugerido } = require('./servicos/exportar');
 const { analisar, importar } = require('./servicos/importar');
 const copias = require('./servicos/copias');
 const { calcularTotais } = require('./servicos/totais');
+const { htmlCliente, linhasParaCliente } = require('./servicos/imagem-cliente');
 
 function pastaExportacao() {
   const definida = definicoes.ler('pasta_exportacao', '');
@@ -135,6 +136,25 @@ function registarIpc({ janela }) {
     },
     'exportar.mostrarNaPasta': (caminho) => shell.showItemInFolder(caminho),
     'exportar.abrir': (caminho) => shell.openPath(caminho),
+
+    // --- imagem para o cliente -------------------------------------------
+    // Vai direta para a area de transferencia, e so com o preco ao cliente:
+    // o do fornecedor nunca entra nesta imagem.
+    'imagens.copiar': async (encomendaId, clienteId) => {
+      const encomenda = encomendas.porId(encomendaId);
+      if (!encomenda) throw new Error('Encomenda nao encontrada.');
+      const grupo = encomenda.grupos.find((g) => g.cliente_id === clienteId);
+      if (!grupo || !linhasParaCliente(grupo).length) {
+        throw new Error('Este cliente nao tem camisolas para mostrar nesta encomenda.');
+      }
+      const { paraPng } = require('./servicos/render-imagem');
+      const png = await paraPng(htmlCliente(grupo, encomenda, {
+        moeda: definicoes.ler('moeda', '€'),
+        fotoDe: fotos.dataUrl
+      }));
+      clipboard.writeImage(nativeImage.createFromBuffer(png));
+      return true;
+    },
 
     // --- importacao ------------------------------------------------------
     'importar.escolherFicheiro': async () => {

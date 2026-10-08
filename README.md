@@ -60,14 +60,24 @@ Botão **Exportar Excel** na página da encomenda, ou:
 node tools/exportar-cli.js <id-da-encomenda>
 ```
 
+## Imagem para o cliente
+
+Na página da encomenda, cada cliente tem um botão **Imagem**. Gera uma imagem
+com as camisolas dele (foto, tamanho, nome/número), o preço de cada uma e o
+total a pagar, e copia-a para a área de transferência: é só colar (Ctrl+V) na
+conversa para ele confirmar. Não abre janela nem grava ficheiro.
+
+Leva **só o preço ao cliente**, nunca o do fornecedor. As camisolas "para
+devolver" não aparecem, e se já pagou uma parte mostra o que falta.
+
 ## Testes
 
 ```bash
 npm test
 ```
 
-52 testes: dinheiro em cêntimos, cascata de margens, totais, agrupamento,
-normalização de nomes, e um teste de aceitação que importa o Excel real de
+73 testes: dinheiro em cêntimos, cascata de margens, totais, agrupamento,
+normalização de nomes, a imagem para os clientes, e um teste de aceitação que importa o Excel real de
 28/06/2026 e o exporta de volta. Esse salta sozinho se o ficheiro não estiver
 na secretária.
 
