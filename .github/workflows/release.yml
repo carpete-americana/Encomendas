@@ -92,6 +92,14 @@ jobs:
           git tag "v$nova"
           git push origin "v$nova"
 
+      # A Release nasce aqui, antes da build. Se for o electron-builder a cria-la,
+      # cada ficheiro enviado em paralelo ve que ainda nao existe e cria a sua:
+      # a v1.0.0 saiu em duas Releases, uma com o instalador e outra com o resto.
+      - name: Criar a Release
+        run: gh release create "v${{ steps.versao.outputs.nova }}" --verify-tag --title "${{ steps.versao.outputs.nova }}" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Construir e publicar
         run: npm run release
         env:
