@@ -60,6 +60,13 @@ Botão **Exportar Excel** na página da encomenda, ou:
 node tools/exportar-cli.js <id-da-encomenda>
 ```
 
+## Fotos do catálogo
+
+Na ficha da camisola: **Escolher foto** (um ficheiro), ou **Colar foto** para
+usar a imagem que está copiada — no browser, botão direito → *Copiar imagem*.
+Com a ficha aberta, Ctrl+V faz o mesmo. Copiar um ficheiro no explorador não
+serve: isso copia o caminho, não a imagem.
+
 ## Imagem para o cliente
 
 Na página da encomenda, cada cliente tem um botão **Imagem**. Gera uma imagem

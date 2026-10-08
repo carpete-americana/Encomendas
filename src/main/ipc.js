@@ -80,6 +80,18 @@ function registarIpc({ janela }) {
       if (id) camisolas.atualizar(id, { foto: nome });
       return nome;
     },
+    // A foto copiada no browser ("Copiar imagem") ou num print, sem passar por
+    // um ficheiro. Copiar um ficheiro no explorador nao conta: isso copia o
+    // caminho, nao a imagem, e para esses ha o "Escolher foto".
+    'camisolas.colarFoto': async (id) => {
+      const imagem = clipboard.readImage();
+      if (imagem.isEmpty()) {
+        throw new Error('Não há nenhuma imagem copiada. Copia a foto (botão direito → Copiar imagem) e tenta outra vez.');
+      }
+      const nome = await fotos.guardar(imagem.toPNG(), { maxPx: definicoes.ler('foto_max_px', 420) });
+      if (id) camisolas.atualizar(id, { foto: nome });
+      return nome;
+    },
     'camisolas.limparFotosOrfas': () => {
       const usadas = camisolas.listar({ incluirArquivadas: true }).map((c) => c.foto);
       return fotos.limparOrfas(usadas);
