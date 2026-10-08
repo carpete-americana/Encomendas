@@ -234,6 +234,21 @@ app.whenReady().then(async () => {
     (await js("document.querySelectorAll('[data-grupo]').length")) === 2);
 
   // ---------------------------------------------------------------------
+  console.log('\nCopiar a imagem de um cliente');
+  const { clipboard } = require('electron');
+  clipboard.clear();
+  await js("document.querySelector('[data-imagem]').click()");
+  let copiada = null;
+  for (let i = 0; i < 40 && (!copiada || copiada.isEmpty()); i += 1) {
+    await esperar(250);
+    copiada = clipboard.readImage();
+  }
+  verificar('ficou uma imagem na area de transferencia', copiada && !copiada.isEmpty());
+  verificar('com a largura da imagem para o WhatsApp', copiada && copiada.getSize().width === 1080,
+    copiada ? JSON.stringify(copiada.getSize()) : '');
+  verificar('nao abriu janela nenhuma', (await js("document.querySelectorAll('.fundo-modal').length")) === 0);
+
+  // ---------------------------------------------------------------------
   console.log(`\n${passos - falhas.length}/${passos} verificacoes passaram.`);
   if (falhas.length) {
     console.log('\nFalhas:');
