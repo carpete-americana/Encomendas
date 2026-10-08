@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<!-- style-src abre para os atributos style= (larguras de barras, fotos de fundo).
+     script-src fica fechado, que e onde um script injetado faria estrago. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' foto: data:; font-src 'self'; connect-src 'self'">
+<title>Encomendas</title>
+<script src="js/tema.js"></script>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+  <aside class="lateral">
+    <div class="marca">
+      <img src="../icon.png" alt="">
+      <div><b>Encomendas</b><small>Camisolas de futebol</small></div>
+    </div>
+
+    <div class="nav-titulo">Trabalho</div>
+    <nav id="nav">
+      <a href="#/painel" data-pagina="painel"><span data-ic="painel"></span>Painel</a>
+      <a href="#/encomendas" data-pagina="encomendas"><span data-ic="encomendas"></span>Encomendas<span class="conta" data-conta="encomendas"></span></a>
+      <a href="#/catalogo" data-pagina="catalogo"><span data-ic="camisola"></span>Cat&aacute;logo<span class="conta" data-conta="catalogo"></span></a>
+      <a href="#/clientes" data-pagina="clientes"><span data-ic="clientes"></span>Clientes<span class="conta" data-conta="clientes"></span></a>
+      <div class="separa"></div>
+      <a href="#/definicoes" data-pagina="definicoes"><span data-ic="definicoes"></span>Defini&ccedil;&otilde;es</a>
+    </nav>
+
+    <div class="rodape">
+      <span id="rodape-versao"></span>
+      <button class="btn fantasma icone pequeno" id="trocar-tema" title="Trocar entre claro e escuro"></button>
+    </div>
+  </aside>
+
+  <main><div id="conteudo" class="pagina"></div></main>
+</div>
+
+<div id="toasts" role="status" aria-live="polite"></div>
+<div id="modal-host"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
