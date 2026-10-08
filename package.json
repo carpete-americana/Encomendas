@@ -1,7 +1,7 @@
 {
   "name": "encomendas-camisolas",
   "productName": "Encomendas",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Gestao de encomendas de camisolas desportivas",
   "main": "src/main/main.js",
   "author": "Andre Matias",
