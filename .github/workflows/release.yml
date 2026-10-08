@@ -1,41 +1,96 @@
-# Publica uma versao nova da app quando se faz push de uma tag "v1.2.3".
-# A app instalada ve a Release e atualiza-se sozinha (Definicoes -> Atualizacoes).
+# Publica uma versao nova da app a cada merge para o main. A app instalada ve a
+# Release e atualiza-se sozinha (Definicoes -> Atualizacoes).
 #
-#   1. muda "version" no package.json (ex.: 1.1.0) e faz commit
-#   2. git tag v1.1.0 && git push origin v1.1.0
+# A versao sobe sozinha no ultimo numero (1.1.0 -> 1.1.1). Para uma mudanca
+# maior, sobe-a a mao antes do merge:
+#   npm version minor --no-git-tag-version     (1.1.x -> 1.2.0)
+# e o workflow usa essa em vez de somar outra.
 name: Publicar versao
 
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    # So documentacao nao faz versao nova.
+    paths-ignore: ['**.md', 'docs/**']
+  workflow_dispatch: # para publicar a mao, pelo separador Actions
 
 permissions:
-  contents: write # para criar a Release e carregar o instalador
+  contents: write # para o commit da versao, a tag e a Release
+
+# Dois merges seguidos esperam um pelo outro, senao davam a mesma versao.
+concurrency:
+  group: publicar
+  cancel-in-progress: false
 
 jobs:
   windows:
     runs-on: windows-latest
+    # O commit da versao feito por este workflow nao volta a publicar.
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          # O main de agora, e nao o commit que disparou: com dois merges
+          # seguidos, o segundo ja tem de ver a versao gravada pelo primeiro.
+          ref: main
+          fetch-depth: 0 # precisa das tags para saber a ultima versao publicada
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
-      # A tag e a versao do package.json tem de bater certo: e pela versao que
-      # a app sabe se a da Release e mais nova do que a dela.
-      - name: Confirmar a versao
-        shell: bash
-        run: |
-          versao="v$(node -p "require('./package.json').version")"
-          if [ "$versao" != "$GITHUB_REF_NAME" ]; then
-            echo "A tag $GITHUB_REF_NAME nao bate com o package.json ($versao)."
-            exit 1
-          fi
-
       - run: npm ci
       - run: npm test
+
+      # Se o package.json ja tem uma versao mais nova do que a ultima tag (subida
+      # a mao), usa-se essa. Senao sobe o ultimo numero. Sem tag nenhuma, a
+      # primeira publicacao e a versao que esta no package.json.
+      - name: Escolher a versao
+        id: versao
+        run: |
+          atual="$(node -p "require('./package.json').version")"
+          ultima="$(git tag --list 'v*' --sort=-v:refname | head -n1 | sed 's/^v//')"
+          echo "package.json: $atual  ultima tag: ${ultima:-nenhuma}"
+
+          if [ -n "$ultima" ]; then
+            mais_nova="$(node -e "
+              const p = (v) => v.split('.').map(Number);
+              const [a, b] = [p('$atual'), p('$ultima')];
+              const d = a.map((x, i) => x - b[i]).find((x) => x !== 0) || 0;
+              console.log(d > 0 ? 'sim' : 'nao');
+            ")"
+            if [ "$mais_nova" = "nao" ]; then
+              # Parte da ultima publicada, para nunca repetir nem andar para tras.
+              npm version "$ultima" --no-git-tag-version --allow-same-version > /dev/null
+              npm version patch --no-git-tag-version > /dev/null
+            fi
+          fi
+
+          nova="$(node -p "require('./package.json').version")"
+          echo "nova=$nova" >> "$GITHUB_OUTPUT"
+          echo "Vai publicar a $nova"
+
+      - name: Gravar a versao no main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          nova="${{ steps.versao.outputs.nova }}"
+          if ! git diff --quiet -- package.json package-lock.json; then
+            git add package.json package-lock.json
+            git commit -m "Versao $nova [skip ci]"
+          fi
+          # Se o main andou entretanto, poe o commit da versao por cima e tenta outra vez.
+          for tentativa in 1 2 3; do
+            git push origin HEAD:main && break
+            [ "$tentativa" = 3 ] && exit 1
+            git pull --rebase origin main
+          done
+          git tag "v$nova"
+          git push origin "v$nova"
 
       - name: Construir e publicar
         run: npm run release
