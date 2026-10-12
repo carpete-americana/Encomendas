@@ -3,13 +3,14 @@ import {
   icone, plural, tamanho, estampa, nomeProprio, fotoMini, caixa
 } from '../util.js';
 import { estado } from '../app.js';
+import { autocompletar } from '../componentes/autocompletar.js';
 
-const filtros = { procura: '', ordem: 'populares', incluirArquivadas: false };
+const filtros = { procura: '', ordem: 'populares', incluirArquivadas: false, equipa: '' };
 const ORDENS = [['populares', 'Mais pedidas'], ['nome', 'A–Z'], ['recentes', 'Recentes'], ['preco', 'Preço']];
 
 export async function desenhar(raiz) {
   const lista = await chamar('camisolas.listar', filtros);
-  const comEstampagem = (await chamar('camisolas.precosComEstampagem')) || [];
+  const equipas = await chamar('camisolas.equipas');
   const moeda = estado.definicoes.moeda || '€';
   const nunca = lista.filter((c) => !c.vezes_encomendada).length;
   const semFoto = lista.filter((c) => !c.foto).length;
@@ -20,7 +21,7 @@ export async function desenhar(raiz) {
       <div class="txt">
         <h1>Catálogo</h1>
         <div class="sub"><span>${plural(lista.length, 'camisola guardada', 'camisolas guardadas')}</span>
-          <span class="ponto">Cada camisola escrita numa encomenda fica aqui para a próxima vez</span></div>
+          <span class="ponto">Cada camisola define-se pela equipa, época e equipamento</span></div>
       </div>
       <div class="acoes">
         <button class="btn" data-juntar-tudo title="Junta camisolas repetidas com nomes diferentes">${icone('copiar', 16)}Juntar repetidas</button>
@@ -29,14 +30,12 @@ export async function desenhar(raiz) {
       </div>
     </div>
 
-    ${comEstampagem.length ? `<div style="margin-bottom:18px">${caixa(
-    `<b>${plural(comEstampagem.length, 'camisola tem', 'camisolas t\u00eam')} o pre\u00e7o com a estampagem l\u00e1 dentro.</b>
-     Vieram dos Excel antigos, onde s\u00f3 foram pedidas personalizadas. Se as pedires outra vez com nome e n\u00famero,
-     a estampagem seria somada duas vezes.
-     <button class="btn pequeno" data-rever-precos style="margin-top:10px">Rever pre\u00e7os</button>`)}</div>` : ''}
-
     <div class="barra-ferramentas">
       <div class="com-icone">${icone('procurar', 16)}<input type="search" data-procura placeholder="Procurar por nome ou equipa" value="${esc(filtros.procura)}"></div>
+      ${equipas.length ? `<select data-equipa style="width:auto;min-width:170px" title="Mostrar só uma equipa">
+        <option value="">Todas as equipas</option>
+        ${equipas.map((q) => `<option value="${esc(q.nome)}" ${filtros.equipa.toLowerCase() === q.nome.toLowerCase() ? 'selected' : ''}>${esc(q.nome)} (${q.camisolas})</option>`).join('')}
+      </select>` : ''}
       <div class="segmentos">
         ${ORDENS.map(([k, t]) => `<button data-ordem="${k}" class="${filtros.ordem === k ? 'ativo' : ''}">${t}</button>`).join('')}
       </div>
@@ -52,10 +51,10 @@ export async function desenhar(raiz) {
     </div>
 
     ${lista.length ? `<div class="grelha-catalogo">${lista.map((c) => cartao(c, moeda)).join('')}</div>`
-    : `<div class="cartao">${vazio('camisola', filtros.procura ? 'Nada com esse nome' : 'Catálogo vazio',
-      filtros.procura ? 'Nenhuma camisola bate com essa procura. Experimenta só a equipa ou o ano.'
-        : 'Importa o Excel antigo ou escreve uma camisola numa encomenda — fica guardada sozinha.',
-      filtros.procura ? '' : `<button class="btn primario" data-nova>${icone('mais', 16)}Nova camisola</button>`)}</div>`}`;
+    : `<div class="cartao">${vazio('camisola', filtros.procura || filtros.equipa ? 'Nada encontrado' : 'Catálogo vazio',
+      filtros.procura || filtros.equipa ? 'Nenhuma camisola bate com essa procura. Experimenta só a equipa ou o ano.'
+        : 'Importa o Excel antigo ou cria a primeira camisola: escolhes a equipa, o ano e o equipamento.',
+      filtros.procura || filtros.equipa ? '' : `<button class="btn primario" data-nova>${icone('mais', 16)}Nova camisola</button>`)}</div>`}`;
 
   const procura = raiz.querySelector('[data-procura]');
   let temporizador;
@@ -72,6 +71,10 @@ export async function desenhar(raiz) {
   });
 
   ligar(raiz, 'click', '[data-ordem]', (e, el) => { filtros.ordem = el.dataset.ordem; desenhar(raiz); });
+  raiz.querySelector('[data-equipa]')?.addEventListener('change', (e) => {
+    filtros.equipa = e.target.value;
+    desenhar(raiz);
+  });
   raiz.querySelector('[data-arquivadas]').addEventListener('change', (e) => {
     filtros.incluirArquivadas = e.target.checked;
     desenhar(raiz);
@@ -88,10 +91,6 @@ export async function desenhar(raiz) {
 
   ligar(raiz, 'click', '[data-abrir]', async (e, el) => {
     if (await editarCamisola(Number(el.dataset.abrir))) desenhar(raiz);
-  });
-
-  ligar(raiz, 'click', '[data-rever-precos]', async () => {
-    if (await reverPrecos(comEstampagem)) desenhar(raiz);
   });
 
   ligar(raiz, 'click', '[data-juntar-tudo]', async () => {
@@ -227,11 +226,37 @@ function cartao(c, moeda) {
     </article>`;
 }
 
-/** Ficha da camisola: dados, foto e quem ja a pediu. */
-export async function editarCamisola(id) {
+function lerCampos(m) {
+  const v = (n) => m.querySelector(`[name="${n}"]`)?.value.trim() || null;
+  return { equipa: v('equipa'), epoca: v('epoca'), tipo: v('tipo'), versao: v('versao'), detalhe: v('detalhe') };
+}
+
+/** Anos para escolher: os ja usados e os das ultimas epocas, nos dois formatos. */
+function anosPara(usadas) {
+  const ano = new Date().getFullYear();
+  const gerados = [];
+  for (let a = ano + 1; a >= ano - 4; a -= 1) gerados.push(String(a), `${a - 1}/${String(a).slice(-2)}`);
+  return [...new Set([...usadas, ...gerados])].sort((x, y) => y.localeCompare(x));
+}
+
+/**
+ * Ficha da camisola: dados, foto e quem ja a pediu. A camisola define-se por
+ * equipa, epoca e equipamento; o nome sai deles. `texto` (de uma encomenda)
+ * serve para adivinhar os campos de uma camisola nova, e `preco` ja vem escrito.
+ */
+export async function editarCamisola(id, { texto = '', preco = '' } = {}) {
   const moeda = estado.definicoes.moeda || '€';
   const c = id ? await chamar('camisolas.porId', id) : null;
   const historico = id ? await chamar('camisolas.historico', id) : [];
+  const [{ tipos, versoes }, equipas, epocas] = await Promise.all([
+    chamar('camisolas.opcoes'), chamar('camisolas.equipas'), chamar('camisolas.epocas')
+  ]);
+  const anos = anosPara(epocas);
+  const lido = !c && texto ? (await chamar('camisolas.decompor', texto)) || { equipa: texto } : null;
+  const v0 = c || lido || {};
+  // Camisola antiga cujo nome nao se conseguiu ler: guarda-se sem lhe mudar o
+  // nome enquanto os campos nao estiverem todos escolhidos.
+  const antiga = !!c && !c.tipo;
   let fotoNova = c ? c.foto : null;
 
   const previa = (nome) => (nome
@@ -240,7 +265,7 @@ export async function editarCamisola(id) {
 
   return modal({
     titulo: c ? c.nome : 'Nova camisola',
-    largo: !!id,
+    largo: true,
     confirmar: c ? 'Guardar alterações' : 'Guardar camisola',
     corpo: `
       <div style="display:grid;grid-template-columns:168px 1fr;gap:22px;align-items:start">
@@ -251,15 +276,31 @@ export async function editarCamisola(id) {
           <button class="btn pequeno fantasma" data-sem-foto style="width:100%;margin-top:4px;${fotoNova ? '' : 'display:none'}">Tirar foto</button>
         </div>
         <div style="display:flex;flex-direction:column;gap:14px">
-          <div class="campo"><label>Nome</label>
-            <input name="nome" value="${esc(c ? c.nome : '')}" placeholder="Portugal 2026 Home Kit">
-            <div class="dica">É este o nome que sai no Excel para o fornecedor.</div></div>
-          <div class="grelha-campos" style="grid-template-columns:1fr 1fr 1fr">
-            <div class="campo"><label>Equipa</label><input name="equipa" value="${esc(c?.equipa || '')}" placeholder="Opcional"></div>
-            <div class="campo"><label>Época</label><input name="epoca" value="${esc(c?.epoca || '')}" placeholder="2025/26"></div>
-            <div class="campo"><label>Preço fornecedor (${esc(moeda)})</label>
-              <input name="preco" style="text-align:right" value="${c ? valorEuro(c.preco_fornecedor) : ''}" placeholder="10,00"></div>
+          <div class="grelha-campos" style="grid-template-columns:1.4fr 1fr">
+            <div class="campo"><label>Equipa</label>
+              <input name="equipa" value="${esc(v0.equipa || '')}" placeholder="Escolher ou escrever" autocomplete="off"></div>
+            <div class="campo"><label>Época / ano</label>
+              <input name="epoca" value="${esc(v0.epoca || '')}" placeholder="2025/26" autocomplete="off"></div>
           </div>
+          <div class="grelha-campos" style="grid-template-columns:1fr 1fr">
+            <div class="campo"><label>Equipamento</label>
+              <select name="tipo">
+                <option value="">Escolher…</option>
+                ${tipos.map((t) => `<option value="${t.valor}" ${v0.tipo === t.valor ? 'selected' : ''}>${esc(t.rotulo)}</option>`).join('')}
+              </select></div>
+            <div class="campo"><label>Versão</label>
+              <select name="versao">
+                <option value="">Não indicar</option>
+                ${versoes.map((x) => `<option value="${x.valor}" ${v0.versao === x.valor ? 'selected' : ''}>${esc(x.rotulo)}</option>`).join('')}
+              </select></div>
+          </div>
+          <div class="grelha-campos" style="grid-template-columns:1.4fr 1fr">
+            <div class="campo"><label>Detalhe</label>
+              <input name="detalhe" value="${esc(v0.detalhe || '')}" placeholder="Opcional — ex.: Manga comprida"></div>
+            <div class="campo"><label>Preço fornecedor (${esc(moeda)})</label>
+              <input name="preco" style="text-align:right" value="${c ? valorEuro(c.preco_fornecedor) : esc(preco)}" placeholder="10,00"></div>
+          </div>
+          <div class="pequeno" data-nome-gerado style="font-weight:600"></div>
           <div class="campo"><label>Notas</label><textarea name="notas" placeholder="Opcional">${esc(c?.notas || '')}</textarea></div>
           ${c ? `<label class="linha-flex pequeno" style="gap:9px;color:var(--tinta-2);font-weight:600;cursor:pointer">
             <input type="checkbox" name="arquivada" ${c.arquivada ? 'checked' : ''}> Arquivada — deixa de aparecer nas sugestões das encomendas
@@ -293,6 +334,49 @@ export async function editarCamisola(id) {
       ` : ''}`,
 
     aoAbrir: (m, fechar) => {
+      const campo = (n) => m.querySelector(`[name="${n}"]`);
+      const nomeGerado = m.querySelector('[data-nome-gerado]');
+
+      // O nome que vai sair, a medida que se escolhe.
+      const mostrarNome = async () => {
+        const campos = lerCampos(m);
+        if (!campos.equipa || !campos.epoca || !campos.tipo) {
+          nomeGerado.innerHTML = antiga
+            ? `<span class="dim">Nome atual: <b>${esc(c.nome)}</b>. Escolhe equipa, época e equipamento e o nome passa a ser feito por eles.</span>`
+            : '<span class="dim">Escolhe a equipa, a época e o equipamento — o nome faz-se sozinho.</span>';
+          return;
+        }
+        const nome = await chamar('camisolas.nomeDe', campos);
+        nomeGerado.innerHTML = c && nome !== c.nome
+          ? `Nome no Excel do fornecedor passa a: <b>${esc(nome)}</b> <span class="dim">(era ${esc(c.nome)})</span>`
+          : `Nome no Excel do fornecedor: <b>${esc(nome)}</b>`;
+      };
+      ['equipa', 'epoca', 'tipo', 'versao', 'detalhe'].forEach((n) => {
+        campo(n).addEventListener('input', mostrarNome);
+        campo(n).addEventListener('change', mostrarNome);
+      });
+      mostrarNome();
+
+      const lista = (input, valores, desenhar, textoNovo) => autocompletar(input, {
+        procurar: async (t) => {
+          const termo = t.toLowerCase();
+          return valores.filter((x) => !termo || x.nome.toLowerCase().includes(termo));
+        },
+        desenhar,
+        permitirNovo: true,
+        textoNovo,
+        aoEscolher: (item) => {
+          input.value = item.novo ?? item.nome;
+          mostrarNome();
+        }
+      });
+      lista(campo('equipa'), equipas,
+        (q) => `<div style="flex:1;font-weight:700">${esc(q.nome)}</div><span class="pequeno dim" style="font-weight:600">${plural(q.camisolas, 'camisola', 'camisolas')}</span>`,
+        'Nova equipa');
+      lista(campo('epoca'), anos.map((nome) => ({ nome })),
+        (x) => `<div style="flex:1;font-weight:700">${esc(x.nome)}</div>${epocas.includes(x.nome) ? '<span class="pequeno dim" style="font-weight:600">já usada</span>' : ''}`,
+        'Usar');
+
       const caixaPrevia = m.querySelector('[data-caixa-previa]');
       const botaoFoto = m.querySelector('[data-foto]');
       const botaoSem = m.querySelector('[data-sem-foto]');
@@ -345,12 +429,17 @@ export async function editarCamisola(id) {
 
     aoConfirmar: async (m) => {
       const v = (n) => m.querySelector(`[name="${n}"]`)?.value.trim() ?? '';
-      if (!v('nome')) { aviso('Escreve o nome da camisola.', 'erro', 'Falta o nome'); return false; }
+      const campos = lerCampos(m);
+      const falta = !campos.equipa ? 'a equipa' : !campos.epoca ? 'a época' : !campos.tipo ? 'o equipamento' : null;
+      // Uma antiga ainda por arrumar pode guardar-se (a foto, o preco...) sem
+      // os campos; as outras nao.
+      if (falta && !(antiga && !campos.tipo)) {
+        aviso(`Falta escolher ${falta}.`, 'erro', 'Camisola incompleta');
+        return false;
+      }
 
       const dados = {
-        nome: v('nome'),
-        equipa: v('equipa') || null,
-        epoca: v('epoca') || null,
+        ...(falta ? {} : campos),
         notas: v('notas') || null,
         foto: fotoNova,
         preco_fornecedor: centimos(v('preco'))
@@ -358,70 +447,12 @@ export async function editarCamisola(id) {
       if (c) {
         dados.arquivada = m.querySelector('[name="arquivada"]')?.checked ? 1 : 0;
         const r = await chamar('camisolas.atualizar', c.id, dados);
-        aviso(dados.nome, 'ok', 'Camisola guardada');
+        aviso(r.nome, 'ok', 'Camisola guardada');
         return r;
       }
       const r = await chamar('camisolas.criar', dados);
-      aviso(`${dados.nome} está no catálogo.`, 'ok', 'Camisola guardada');
+      aviso(`${r.nome} está no catálogo.`, 'ok', 'Camisola guardada');
       return r;
-    }
-  });
-}
-
-
-/**
- * Tira a estampagem dos precos de catalogo que a trazem embutida. Nada e
- * aplicado sem se ver linha a linha, e o preco sugerido pode ser corrigido a
- * mao antes de gravar.
- */
-async function reverPrecos(candidatos) {
-  const moeda = estado.definicoes.moeda || '\u20ac';
-
-  return modal({
-    titulo: 'Rever pre\u00e7os com estampagem inclu\u00edda',
-    largo: true,
-    confirmar: 'Gravar os pre\u00e7os escolhidos',
-    corpo: `
-      ${caixa('O pre\u00e7o do cat\u00e1logo deve ser o da camisola lisa. A estampagem \u00e9 somada depois, conforme o que for escrito em cada linha. As encomendas antigas n\u00e3o mudam \u2014 o que muda \u00e9 o ponto de partida das pr\u00f3ximas.', 'info')}
-      <div class="cartao sem-pad" style="max-height:380px;overflow-y:auto;box-shadow:none">
-        <table>
-          <thead><tr>
-            <th style="width:42px" class="meio"><input type="checkbox" data-todos checked title="Escolher todas"></th>
-            <th>Camisola</th><th class="num">Agora</th><th class="num">Estampagem</th><th class="num" style="width:120px">Passa a</th>
-          </tr></thead>
-          <tbody>
-            ${candidatos.map((c) => `
-              <tr>
-                <td class="meio"><input type="checkbox" data-escolher="${c.id}" checked></td>
-                <td style="font-weight:700">${esc(c.nome)}
-                  ${c.confianca === 'baixa' ? '<span class="pilula aviso" style="margin-left:6px">confirmar</span>' : ''}
-                  <div class="pequeno dim" style="font-weight:600">${plural(c.linhas, 'linha, sempre personalizada', 'linhas, sempre personalizadas')}</div></td>
-                <td class="num"><span class="dinheiro dim">${eur(c.preco_fornecedor, moeda)}</span></td>
-                <td class="num"><span class="dinheiro">\u2212 ${eur(c.extra, moeda)}</span></td>
-                <td class="num"><input class="editavel num" data-preco="${c.id}" value="${valorEuro(c.preco_sugerido)}"></td>
-              </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`,
-
-    aoAbrir: (m) => {
-      m.querySelector('[data-todos]').addEventListener('change', (e) => {
-        m.querySelectorAll('[data-escolher]').forEach((c) => { c.checked = e.target.checked; });
-      });
-    },
-
-    aoConfirmar: async (m) => {
-      const escolhidas = [...m.querySelectorAll('[data-escolher]')].filter((c) => c.checked);
-      if (!escolhidas.length) { aviso('N\u00e3o escolheste nenhuma camisola.', 'erro', 'Nada para gravar'); return false; }
-
-      const lista = escolhidas.map((c) => {
-        const id = Number(c.dataset.escolher);
-        return { id, preco_fornecedor: centimos(m.querySelector(`[data-preco="${id}"]`).value) };
-      }).filter((x) => x.preco_fornecedor !== null);
-
-      const n = await chamar('camisolas.corrigirPrecos', lista);
-      aviso(`${plural(n, 'pre\u00e7o corrigido', 'pre\u00e7os corrigidos')} no cat\u00e1logo.`, 'ok', 'Pre\u00e7os revistos');
-      return n;
     }
   });
 }

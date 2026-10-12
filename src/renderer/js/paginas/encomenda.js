@@ -352,18 +352,26 @@ function ligarEventos(raiz) {
     desenhar: (c) => sugestaoCamisola(c, moeda),
     permitirNovo: true,
     textoNovo: 'Nova camisola',
-    aoEscolher: (item) => {
-      if (item.novo) {
-        campo('camisola').value = item.novo;
-        campo('camisola_id').value = '';
-      } else {
-        campo('camisola').value = item.nome;
-        campo('camisola_id').value = item.id;
-        if (item.preco_fornecedor !== null) campo('preco').value = valorEuro(item.preco_fornecedor);
-      }
+    aoEscolher: async (item) => {
+      const camisola = item.novo ? await novaCamisola(item.novo) : item;
+      if (!camisola) { campo('camisola').focus(); return; }
+      usarCamisola(camisola);
       campo('tamanho').focus();
     }
   });
+
+  function usarCamisola(c) {
+    campo('camisola').value = c.nome;
+    campo('camisola_id').value = c.id;
+    if (c.preco_fornecedor !== null) campo('preco').value = valorEuro(c.preco_fornecedor);
+  }
+
+  // Uma camisola que ainda nao esta no catalogo faz-se pela ficha (equipa,
+  // epoca, equipamento), nao pelo nome escrito. O texto serve de ponto de partida.
+  async function novaCamisola(texto) {
+    const { editarCamisola } = await import('./catalogo.js');
+    return editarCamisola(null, { texto, preco: campo('preco').value.trim() });
+  }
   campo('camisola').addEventListener('input', () => { campo('camisola_id').value = ''; });
 
   // O campo do nome so abre com personalizacao ligada: escrito com ela
@@ -389,11 +397,20 @@ function ligarEventos(raiz) {
     if (!nomeCliente) { aviso('Escreve de quem é a camisola.', 'erro', 'Falta o cliente'); campo('cliente').focus(); return; }
     if (!nomeCamisola) { aviso('Escreve ou escolhe a camisola.', 'erro', 'Falta a camisola'); campo('camisola').focus(); return; }
 
+    if (!campo('camisola_id').value) {
+      const camisola = (await chamar('camisolas.porNome', nomeCamisola)) || await novaCamisola(nomeCamisola);
+      if (!camisola) { campo('camisola').focus(); return; }
+      const precoEscrito = campo('preco').value;
+      usarCamisola(camisola);
+      if (precoEscrito.trim()) campo('preco').value = precoEscrito;
+    }
+    const camisolaEscolhida = campo('camisola').value.trim();
+
     await chamar('linhas.adicionar', atual.id, {
       cliente_id: campo('cliente_id').value ? Number(campo('cliente_id').value) : null,
       cliente_nome: nomeCliente,
       camisola_id: campo('camisola_id').value ? Number(campo('camisola_id').value) : null,
-      camisola_nome: nomeCamisola,
+      camisola_nome: camisolaEscolhida,
       tamanho: campo('tamanho').value.trim().toUpperCase() || null,
       personalizacao: campo('personalizacao').value === '1',
       personalizacao_texto: campo('texto').value.trim() || null,
@@ -410,7 +427,7 @@ function ligarEventos(raiz) {
     f.querySelector('[name="cliente_id"]').value = clienteId;
     f.querySelector('[name="cliente_margem"]').value = margemCliente;
     f.querySelector('[name="camisola"]').focus();
-    aviso(`${nomeCamisola} para ${nomeCliente}.`, 'ok', 'Camisola adicionada');
+    aviso(`${camisolaEscolhida} para ${nomeCliente}.`, 'ok', 'Camisola adicionada');
   }
 
   // A conta a vista enquanto se escreve: camisola + estampagem + margem.
