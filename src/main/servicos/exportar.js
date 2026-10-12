@@ -7,148 +7,299 @@ const fotos = require('./fotos');
 const { nomeFicheiro } = require('./texto');
 
 /**
- * Gera o Excel que vai para o fornecedor. A regra que manda em tudo o que esta
- * aqui: sai a lista de producao e mais nada. Nenhum preco, nenhum total,
- * nenhuma caixa de contas. O fornecedor nao tem nada que ver a margem.
+ * Gera o Excel da encomenda. O que leva escolhe-se a cada exportacao (ver
+ * CAMPOS): por omissao e a lista de producao para o fornecedor, sem precos.
+ * Os precos so entram se forem pedidos, e nesse caso como numeros a serio,
+ * com totais, para a folha servir tambem para fazer contas.
+ *
+ * Uma linha por camisola, com a foto dentro da propria linha: assim a folha
+ * pode ser ordenada e filtrada no Excel sem se desfazer.
  */
 
-// A folha tem 4 linhas por camisola porque e a altura de que a foto precisa.
-const LINHAS_POR_ITEM = 4;
-const COL_FOTO = 10; // coluna J, a seguir ao texto
-
-const COLUNAS = [
-  { chave: 'item', titulo: 'ITEM', de: 1, ate: 3, largura: 34 },
-  { chave: 'tamanho', titulo: 'TAMANHO', de: 4, ate: 5, largura: 11 },
-  { chave: 'personalizacao', titulo: 'PERSONALIZAÇÃO', de: 6, ate: 7, largura: 16 },
-  { chave: 'nome_numero', titulo: 'NOME - NUMERO - SIMBOLO', de: 8, ate: 9, largura: 17 }
+/** O que se pode escolher, pela ordem em que aparece na folha. */
+const CAMPOS = [
+  { chave: 'foto', rotulo: 'Foto', omissao: true },
+  { chave: 'tamanho', rotulo: 'Tamanho', omissao: true },
+  { chave: 'personalizacao', rotulo: 'Personalização (sim/não)', omissao: true },
+  { chave: 'nome_numero', rotulo: 'Nome · número · símbolo', omissao: true },
+  { chave: 'preco_fornecedor', rotulo: 'Preço do fornecedor', omissao: false, preco: true },
+  { chave: 'preco_cliente', rotulo: 'Preço ao cliente', omissao: false, preco: true },
+  { chave: 'chegada', rotulo: 'Estado da chegada', omissao: false },
+  { chave: 'pago', rotulo: 'Pago', omissao: false }
 ];
 
-const COR_TITULO = 'FF131320';
-const COR_CLIENTE = 'FF6366F1';
-const COR_CABECALHO = 'FFE8E8F5';
-const BORDA = { style: 'thin', color: { argb: 'FFB9B9CC' } };
+/**
+ * Como os clientes aparecem: em blocos (um titulo por cliente), numa coluna
+ * ao lado da camisola, ou nada (a lista so, sem nomes).
+ */
+const MODOS_CLIENTE = ['blocos', 'coluna', 'nenhum'];
 
-function letra(n) {
-  let s = '';
-  while (n > 0) {
-    const r = (n - 1) % 26;
-    s = String.fromCharCode(65 + r) + s;
-    n = Math.floor((n - 1) / 26);
+const OMISSAO = {
+  clientes: 'blocos',
+  campos: CAMPOS.filter((c) => c.omissao).map((c) => c.chave)
+};
+
+const ESTADOS = { pendente: 'Por chegar', chegou: 'Chegou', errada: 'Errada', em_falta: 'Para devolver' };
+
+const COR = {
+  tinta: 'FF1F2937',
+  tinta2: 'FF6B7280',
+  titulo: 'FF0F172A',
+  cabecalho: 'FF1E293B',
+  cliente: 'FFEEF2FF',
+  clienteTinta: 'FF3730A3',
+  zebra: 'FFF8FAFC',
+  linha: 'FFE2E8F0',
+  total: 'FFF1F5F9'
+};
+const FINA = { style: 'thin', color: { argb: COR.linha } };
+const FONTE = 'Calibri';
+
+/** As colunas da folha, conforme o que foi escolhido. */
+function colunasPara({ campos, clientes }) {
+  const quer = (k) => campos.includes(k);
+  const cols = [{ chave: 'n', titulo: 'Nº', largura: 5, alinhar: 'center' }];
+  if (quer('foto')) cols.push({ chave: 'foto', titulo: 'FOTO', largura: 16, alinhar: 'center' });
+  cols.push({ chave: 'item', titulo: 'ITEM', largura: 40, alinhar: 'left' });
+  if (clientes === 'coluna') cols.push({ chave: 'cliente', titulo: 'CLIENTE', largura: 22, alinhar: 'left' });
+  if (quer('tamanho')) cols.push({ chave: 'tamanho', titulo: 'TAMANHO', largura: 11, alinhar: 'center' });
+  if (quer('personalizacao')) cols.push({ chave: 'personalizacao', titulo: 'PERSONALIZAÇÃO', largura: 16, alinhar: 'center' });
+  if (quer('nome_numero')) cols.push({ chave: 'nome_numero', titulo: 'NOME - NÚMERO - SÍMBOLO', largura: 28, alinhar: 'center' });
+  if (quer('preco_fornecedor')) cols.push({ chave: 'preco_fornecedor', titulo: 'PREÇO FORNECEDOR', largura: 18, alinhar: 'right', dinheiro: true });
+  if (quer('preco_cliente')) cols.push({ chave: 'preco_cliente', titulo: 'PREÇO CLIENTE', largura: 16, alinhar: 'right', dinheiro: true });
+  if (quer('chegada')) cols.push({ chave: 'chegada', titulo: 'CHEGADA', largura: 15, alinhar: 'center' });
+  if (quer('pago')) cols.push({ chave: 'pago', titulo: 'PAGO', largura: 9, alinhar: 'center' });
+  return cols;
+}
+
+/** Junta o que vem do ecra com o que falta, e deita fora o que nao existe. */
+function normalizarEscolha(escolha = {}) {
+  let clientes = MODOS_CLIENTE.includes(escolha.clientes) ? escolha.clientes : OMISSAO.clientes;
+  // Compatibilidade com o "sem os nomes dos clientes" de antes.
+  if (escolha.semClientes) clientes = 'nenhum';
+  const validos = new Set(CAMPOS.map((c) => c.chave));
+  const campos = Array.isArray(escolha.campos) ? escolha.campos.filter((c) => validos.has(c)) : OMISSAO.campos;
+  return { clientes, campos };
+}
+
+function valorDe(chave, l, n) {
+  switch (chave) {
+    case 'n': return n;
+    case 'item': return l.camisola_nome || '';
+    case 'cliente': return l.cliente_nome || '';
+    case 'tamanho': return l.tamanho || '-';
+    // O ficheiro original tinha "SIM", "-" e um "Nao" solto; aqui e sempre um dos dois.
+    case 'personalizacao': return l.personalizacao ? 'SIM' : '-';
+    case 'nome_numero': return l.personalizacao_texto || '-';
+    case 'preco_fornecedor': return (l.preco_fornecedor || 0) / 100;
+    case 'preco_cliente': return (l.preco_cliente || 0) / 100;
+    case 'chegada': return ESTADOS[l.estado_chegada] || l.estado_chegada || '';
+    case 'pago': return l.pago ? 'Sim' : 'Não';
+    default: return null;
   }
-  return s;
 }
 
 async function exportar(encomenda, destino, opcoes = {}) {
-  const alturaLinha = Number(opcoes.alturaLinha) || 22;
+  const escolha = normalizarEscolha(opcoes);
   const alturaFoto = Number(opcoes.alturaFoto) || 108;
+  const moeda = opcoes.moeda || '€';
+  const formatoDinheiro = `#,##0.00 "${moeda.replace(/"/g, '')}"`;
   const tituloTexto = (opcoes.titulo || 'ENCOMENDA CAMISOLAS - {data}')
     .replace('{data}', formatarData(encomenda.data))
     .replace('{titulo}', encomenda.titulo || '');
+
+  const cols = colunasPara(escolha);
+  const ultimaCol = cols.length;
+  const colDe = (chave) => cols.findIndex((c) => c.chave === chave) + 1;
+  const temFoto = colDe('foto') > 0;
+  const precos = cols.filter((c) => c.dinheiro);
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Encomendas';
   wb.created = new Date();
   const ws = wb.addWorksheet('Encomenda', {
-    views: [{ state: 'frozen', ySplit: 1 }],
-    pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+    properties: { defaultRowHeight: 18 },
+    pageSetup: {
+      paperSize: 9,
+      orientation: ultimaCol > 7 ? 'landscape' : 'portrait',
+      fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+      horizontalCentered: true
+    },
+    headerFooter: { oddFooter: '&L&8&K6B7280' + tituloTexto.replace(/&/g, '&&') + '&R&8&K6B7280Página &P de &N' }
   });
 
-  for (const c of COLUNAS) ws.getColumn(c.de).width = c.largura;
-  ws.getColumn(COL_FOTO).width = 20;
+  // A coluna da foto fica com a largura da foto (as fotos sao ao alto, ~3:4).
+  const larguraFotoPx = Math.round(alturaFoto * 0.78);
+  cols.forEach((c, i) => {
+    ws.getColumn(i + 1).width = c.chave === 'foto' ? Math.max(10, larguraFotoPx / 7 + 2) : c.largura;
+  });
 
-  let linha = 1;
+  const linhasTodas = encomenda.grupos.flatMap((g) => g.linhas.map((l) => ({ ...l, cliente_nome: g.cliente_nome })));
+  const nClientes = encomenda.grupos.length;
 
-  // Titulo
-  ws.mergeCells(`${letra(1)}${linha}:${letra(COL_FOTO + 1)}${linha}`);
-  const cTitulo = ws.getCell(linha, 1);
+  // --- titulo -----------------------------------------------------------
+  let r = 1;
+  ws.mergeCells(r, 1, r, ultimaCol);
+  const cTitulo = ws.getCell(r, 1);
   cTitulo.value = tituloTexto;
-  cTitulo.font = { bold: true, size: 15, color: { argb: 'FFFFFFFF' } };
-  cTitulo.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR_TITULO } };
+  cTitulo.font = { name: FONTE, bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+  cTitulo.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.titulo } };
   cTitulo.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-  ws.getRow(linha).height = 30;
-  linha += 2;
+  ws.getRow(r).height = 34;
+  r += 1;
+
+  ws.mergeCells(r, 1, r, ultimaCol);
+  const cResumo = ws.getCell(r, 1);
+  cResumo.value = [
+    `${linhasTodas.length} ${linhasTodas.length === 1 ? 'camisola' : 'camisolas'}`,
+    escolha.clientes !== 'nenhum' ? `${nClientes} ${nClientes === 1 ? 'cliente' : 'clientes'}` : null
+  ].filter(Boolean).join('  ·  ');
+  cResumo.font = { name: FONTE, size: 10, color: { argb: COR.tinta2 } };
+  cResumo.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+  ws.getRow(r).height = 20;
+  r += 2;
+
+  // --- cabecalho (um so, preso no topo e repetido em cada pagina) --------
+  const linhaCabecalho = r;
+  cols.forEach((c, i) => {
+    const cel = ws.getCell(r, i + 1);
+    cel.value = c.titulo;
+    cel.font = { name: FONTE, bold: true, size: 9, color: { argb: 'FFFFFFFF' } };
+    cel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.cabecalho } };
+    cel.alignment = { vertical: 'middle', horizontal: c.alinhar === 'right' ? 'right' : 'center', wrapText: true };
+    cel.border = { top: FINA, bottom: FINA, left: FINA, right: FINA };
+  });
+  ws.getRow(r).height = 26;
+  ws.views = [{ state: 'frozen', ySplit: linhaCabecalho, showGridLines: false }];
+  ws.pageSetup.printTitlesRow = `${linhaCabecalho}:${linhaCabecalho}`;
+  r += 1;
 
   const semFoto = [];
+  const linhasDeItens = [];
+  let n = 0;
 
-  // Sem os nomes dos clientes sai uma lista so, com um cabecalho e as
-  // camisolas todas seguidas: o fornecedor nao fica a saber para quem sao.
-  const blocos = opcoes.semClientes
-    ? [{ cliente_nome: null, linhas: encomenda.grupos.flatMap((g) => g.linhas.map((l) => ({ ...l, cliente_nome: g.cliente_nome }))) }]
-    : encomenda.grupos;
+  const blocos = escolha.clientes === 'blocos'
+    ? encomenda.grupos.map((g) => ({ nome: g.cliente_nome, linhas: g.linhas.map((l) => ({ ...l, cliente_nome: g.cliente_nome })) }))
+    : [{ nome: null, linhas: linhasTodas }];
 
-  for (const grupo of blocos) {
-    if (grupo.cliente_nome !== null) {
-      // Nome do cliente
-      ws.mergeCells(`${letra(1)}${linha}:${letra(COL_FOTO + 1)}${linha}`);
-      const cCliente = ws.getCell(linha, 1);
-      cCliente.value = (grupo.cliente_nome || '').toUpperCase();
-      cCliente.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
-      cCliente.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR_CLIENTE } };
-      cCliente.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-      ws.getRow(linha).height = 22;
-      linha += 1;
-    }
-
-    // Cabecalho
-    for (const c of COLUNAS) {
-      ws.mergeCells(`${letra(c.de)}${linha}:${letra(c.ate)}${linha}`);
-      const cel = ws.getCell(linha, c.de);
-      cel.value = c.titulo;
-      cel.font = { bold: true, size: 10 };
-      cel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR_CABECALHO } };
-      cel.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-      cel.border = { top: BORDA, left: BORDA, bottom: BORDA, right: BORDA };
-    }
-    ws.getRow(linha).height = 20;
-    linha += 1;
-
-    for (const l of grupo.linhas) {
-      const primeira = linha;
-      const ultima = linha + LINHAS_POR_ITEM - 1;
-
-      const valores = {
-        item: l.camisola_nome || '',
-        tamanho: l.tamanho || '-',
-        // O ficheiro original tinha "SIM", "-" e um "Nao" solto; aqui e sempre um dos dois.
-        personalizacao: l.personalizacao ? 'SIM' : '-',
-        nome_numero: l.personalizacao_texto || '-'
+  for (const bloco of blocos) {
+    if (bloco.nome !== null) {
+      ws.mergeCells(r, 1, r, ultimaCol);
+      const c = ws.getCell(r, 1);
+      const qt = bloco.linhas.length;
+      c.value = {
+        richText: [
+          { text: (bloco.nome || '').toUpperCase(), font: { name: FONTE, bold: true, size: 11, color: { argb: COR.clienteTinta } } },
+          { text: `   ${qt} ${qt === 1 ? 'camisola' : 'camisolas'}`, font: { name: FONTE, size: 9, color: { argb: COR.tinta2 } } }
+        ]
       };
-
-      for (const c of COLUNAS) {
-        ws.mergeCells(`${letra(c.de)}${primeira}:${letra(c.ate)}${ultima}`);
-        const cel = ws.getCell(primeira, c.de);
-        cel.value = valores[c.chave];
-        cel.alignment = {
-          vertical: 'middle',
-          horizontal: c.chave === 'item' ? 'left' : 'center',
-          wrapText: true,
-          indent: c.chave === 'item' ? 1 : 0
-        };
-        cel.font = { size: 10, bold: c.chave === 'item' };
-        cel.border = { top: BORDA, left: BORDA, bottom: BORDA, right: BORDA };
-      }
-
-      for (let r = primeira; r <= ultima; r += 1) ws.getRow(r).height = alturaLinha;
-
-      const caminhoFoto = l.camisola_foto ? fotos.caminhoDe(l.camisola_foto) : null;
-      if (caminhoFoto) {
-        const dim = await fotos.dimensoes(l.camisola_foto);
-        const escala = dim && dim.altura ? alturaFoto / dim.altura : 1;
-        const largura = dim ? Math.round(dim.largura * escala) : alturaFoto;
-        const id = wb.addImage({ filename: caminhoFoto, extension: 'jpeg' });
-        ws.addImage(id, {
-          tl: { col: COL_FOTO - 1, row: primeira - 1, colOff: 20000, rowOff: 20000 },
-          ext: { width: largura, height: alturaFoto },
-          editAs: 'oneCell'
-        });
-      } else {
-        semFoto.push(`${l.cliente_nome || grupo.cliente_nome}: ${valores.item}`);
-      }
-
-      linha = ultima + 1;
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.cliente } };
+      c.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+      c.border = { top: FINA, bottom: FINA };
+      ws.getRow(r).height = 24;
+      r += 1;
     }
 
-    linha += 1; // espaco entre clientes
+    const inicio = r;
+    for (const l of bloco.linhas) {
+      n += 1;
+      const zebra = n % 2 === 0;
+      cols.forEach((c, i) => {
+        const cel = ws.getCell(r, i + 1);
+        const v = valorDe(c.chave, l, n);
+        if (v !== null) cel.value = v;
+        cel.font = {
+          name: FONTE,
+          size: c.chave === 'n' ? 9 : 11,
+          bold: c.chave === 'item' || c.chave === 'tamanho',
+          color: { argb: c.chave === 'n' ? COR.tinta2 : COR.tinta }
+        };
+        cel.alignment = { vertical: 'middle', horizontal: c.alinhar, wrapText: true, indent: c.alinhar === 'left' ? 1 : 0 };
+        cel.border = { top: FINA, bottom: FINA, left: FINA, right: FINA };
+        if (zebra) cel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR.zebra } };
+        if (c.dinheiro) cel.numFmt = formatoDinheiro;
+      });
+      // Uma camisola para devolver fica a vista, mas riscada.
+      if (l.estado_chegada === 'em_falta') {
+        cols.forEach((c, i) => { const cel = ws.getCell(r, i + 1); cel.font = { ...cel.font, strike: true, color: { argb: COR.tinta2 } }; });
+      }
+
+      ws.getRow(r).height = temFoto ? Math.round((alturaFoto + 12) * 0.75) : 22;
+
+      if (temFoto) {
+        const caminhoFoto = l.camisola_foto ? fotos.caminhoDe(l.camisola_foto) : null;
+        if (caminhoFoto) {
+          const dim = await fotos.dimensoes(l.camisola_foto);
+          const escala = dim && dim.altura ? Math.min(alturaFoto / dim.altura, larguraFotoPx / dim.largura) : 1;
+          const altura = dim ? Math.round(dim.altura * escala) : alturaFoto;
+          const largura = dim ? Math.round(dim.largura * escala) : larguraFotoPx;
+          const larguraColPx = ws.getColumn(colDe('foto')).width * 7;
+          const id = wb.addImage({ filename: caminhoFoto, extension: 'jpeg' });
+          ws.addImage(id, {
+            // Centrada na celula; os desvios do ExcelJS vao em EMU (9525 por pixel).
+            tl: {
+              col: colDe('foto') - 1, row: r - 1,
+              nativeColOff: Math.max(0, Math.round((larguraColPx - largura) / 2)) * 9525,
+              nativeRowOff: Math.max(0, Math.round((alturaFoto + 12 - altura) / 2)) * 9525
+            },
+            ext: { width: largura, height: altura },
+            editAs: 'oneCell'
+          });
+        } else {
+          semFoto.push(`${l.cliente_nome}: ${l.camisola_nome}`);
+          ws.getCell(r, colDe('foto')).value = 'sem foto';
+          ws.getCell(r, colDe('foto')).font = { name: FONTE, size: 9, italic: true, color: { argb: COR.tinta2 } };
+        }
+      }
+      linhasDeItens.push({ linha: r, conta: l.estado_chegada !== 'em_falta' });
+      r += 1;
+    }
+
+    // Subtotal do cliente, so com precos e em blocos.
+    if (bloco.nome !== null && precos.length && bloco.linhas.length) {
+      linhaTotal(r, `Total ${bloco.nome}`, inicio, r - 1, false);
+      r += 1;
+    }
+  }
+
+  // Total geral: so conta as que nao sao para devolver.
+  if (precos.length && linhasDeItens.length) {
+    r += escolha.clientes === 'blocos' ? 1 : 0;
+    linhaTotal(r, 'TOTAL', null, null, true);
+    r += 1;
+  }
+
+  function linhaTotal(linha, texto, de, ate, geral) {
+    const primeiraDinheiro = Math.min(...precos.map((c) => colDe(c.chave)));
+    ws.mergeCells(linha, 1, linha, primeiraDinheiro - 1);
+    const rotulo = ws.getCell(linha, 1);
+    rotulo.value = texto;
+    rotulo.font = { name: FONTE, bold: true, size: geral ? 12 : 10, color: { argb: COR.tinta } };
+    rotulo.alignment = { vertical: 'middle', horizontal: 'right', indent: 1 };
+    for (let c = 1; c <= ultimaCol; c += 1) {
+      const cel = ws.getCell(linha, c);
+      cel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: geral ? 'FFE2E8F0' : COR.total } };
+      cel.border = { top: { style: geral ? 'medium' : 'thin', color: { argb: 'FF94A3B8' } }, bottom: FINA };
+    }
+    for (const p of precos) {
+      const col = colDe(p.chave);
+      const L = ws.getColumn(col).letter;
+      const contam = linhasDeItens
+        .filter((x) => x.conta && (de === null || (x.linha >= de && x.linha <= ate)))
+        .map((x) => x.linha);
+      const cel = ws.getCell(linha, col);
+      const soma = contam.reduce((s, x) => s + Number(ws.getCell(x, col).value || 0), 0);
+      // Formula a serio, para continuar certa se mexerem na folha; o resultado
+      // vai junto para aparecer logo, mesmo antes de o Excel recalcular.
+      cel.value = contam.length
+        ? { formula: contam.map((x) => `${L}${x}`).join('+'), result: Math.round(soma * 100) / 100 }
+        : 0;
+      cel.numFmt = formatoDinheiro;
+      cel.font = { name: FONTE, bold: true, size: geral ? 12 : 10, color: { argb: COR.tinta } };
+      cel.alignment = { vertical: 'middle', horizontal: 'right' };
+    }
+    ws.getRow(linha).height = geral ? 26 : 20;
   }
 
   fs.mkdirSync(path.dirname(destino), { recursive: true });
@@ -158,9 +309,11 @@ async function exportar(encomenda, destino, opcoes = {}) {
   return {
     caminho: destino,
     bytes: stat.size,
-    clientes: encomenda.grupos.length,
-    semClientes: !!opcoes.semClientes,
+    clientes: nClientes,
     camisolas: encomenda.totais.nCamisolas,
+    escolha,
+    semClientes: escolha.clientes === 'nenhum',
+    comPrecos: precos.length > 0,
     semFoto
   };
 }
@@ -181,4 +334,4 @@ function nomeSugerido(encomenda) {
   return `${nomeFicheiro(`ENCOMENDA_${d}_${m}_${a}_fornecedor`)}.xlsx`;
 }
 
-module.exports = { exportar, nomeSugerido, formatarData, LINHAS_POR_ITEM, COLUNAS };
+module.exports = { exportar, nomeSugerido, formatarData, normalizarEscolha, CAMPOS, MODOS_CLIENTE, OMISSAO };

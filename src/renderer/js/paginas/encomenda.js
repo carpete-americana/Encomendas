@@ -596,41 +596,93 @@ async function editarDetalhes(raiz) {
   if (r) await refrescar(raiz);
 }
 
-async function exportar() {
-  // Com ou sem os nomes dos clientes: sem eles, o fornecedor recebe so a
-  // lista das camisolas, todas seguidas.
-  const semClientes = await modal({
-    titulo: 'Exportar Excel',
-    confirmar: null,
-    cancelar: 'Cancelar',
-    corpo: `
-      <div class="pequeno dim" style="font-weight:600">Nenhum dos dois leva preços. Escolhe se o fornecedor vê de quem é cada camisola.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <button class="btn" data-modo="sem" style="height:auto;padding:16px;flex-direction:column;align-items:flex-start;gap:4px;text-align:left">
-          <b>Sem os nomes dos clientes</b>
-          <span class="pequeno dim" style="font-weight:600;white-space:normal">Uma lista só, com as camisolas todas seguidas.</span>
-        </button>
-        <button class="btn" data-modo="com" style="height:auto;padding:16px;flex-direction:column;align-items:flex-start;gap:4px;text-align:left">
-          <b>Com os nomes dos clientes</b>
-          <span class="pequeno dim" style="font-weight:600;white-space:normal">As camisolas agrupadas por cliente, como até agora.</span>
-        </button>
-      </div>`,
-    aoAbrir: (m, fechar) => {
-      m.querySelectorAll('[data-modo]').forEach((b) => b.addEventListener('click', () => fechar(b.dataset.modo)));
-    }
-  });
-  if (!semClientes) return;
+const MODOS_CLIENTE = [
+  ['blocos', 'Agrupadas por cliente', 'Um título com o nome de cada cliente'],
+  ['coluna', 'Numa coluna', 'O nome ao lado de cada camisola'],
+  ['nenhum', 'Sem nomes', 'Uma lista só — o fornecedor não sabe de quem é']
+];
+const PREDEFINIDOS = {
+  fornecedor: { clientes: 'nenhum', campos: ['foto', 'tamanho', 'personalizacao', 'nome_numero'] },
+  eu: { clientes: 'blocos', campos: ['foto', 'tamanho', 'nome_numero', 'preco_fornecedor', 'preco_cliente', 'chegada', 'pago'] }
+};
 
-  const r = await chamar('exportar.encomenda', atual.id, { perguntar: true, semClientes: semClientes === 'sem' });
+/** Escolher o que o Excel leva. Abre com o que se escolheu da ultima vez. */
+async function escolherExportacao() {
+  const { campos, ultima } = await chamar('exportar.opcoes');
+  const escolha = { clientes: ultima.clientes, campos: new Set(ultima.campos) };
+
+  return modal({
+    titulo: 'Exportar Excel',
+    confirmar: 'Exportar',
+    corpo: `
+      <div class="linha-flex" style="gap:8px;flex-wrap:wrap">
+        <span class="pequeno dim" style="font-weight:700">Atalhos:</span>
+        <button class="btn pequeno" data-predef="fornecedor">Para o fornecedor</button>
+        <button class="btn pequeno" data-predef="eu">Para mim (com preços)</button>
+      </div>
+      <div class="campo"><label>Clientes</label>
+        <div class="segmentos" data-modos style="align-self:flex-start">
+          ${MODOS_CLIENTE.map(([k, t, dica]) => `<button type="button" data-modo="${k}" title="${esc(dica)}">${esc(t)}</button>`).join('')}
+        </div>
+        <div class="dica" data-dica-modo></div></div>
+      <div class="campo"><label>O que aparece</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 18px;margin-top:2px">
+          <label class="linha-flex pequeno" style="gap:9px;font-weight:600;color:var(--tinta-3)"><input type="checkbox" checked disabled> Camisola (sempre)</label>
+          ${campos.map((c) => `
+            <label class="linha-flex pequeno" style="gap:9px;font-weight:600;cursor:pointer">
+              <input type="checkbox" data-campo="${c.chave}"> ${esc(c.rotulo)}</label>`).join('')}
+        </div></div>
+      <div data-aviso-precos></div>`,
+
+    aoAbrir: (m) => {
+      const pintar = () => {
+        m.querySelectorAll('[data-modo]').forEach((b) => b.classList.toggle('ativo', b.dataset.modo === escolha.clientes));
+        m.querySelector('[data-dica-modo]').textContent = MODOS_CLIENTE.find(([k]) => k === escolha.clientes)[2];
+        m.querySelectorAll('[data-campo]').forEach((c) => { c.checked = escolha.campos.has(c.dataset.campo); });
+        const comPrecos = campos.some((c) => c.preco && escolha.campos.has(c.chave));
+        m.querySelector('[data-aviso-precos]').innerHTML = comPrecos
+          ? caixa('<b>Este Excel leva preços.</b> Se for para o fornecedor, ele vai vê-los — incluindo quanto cobras.')
+          : '';
+      };
+      m.querySelector('[data-modos]').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-modo]');
+        if (!b) return;
+        escolha.clientes = b.dataset.modo;
+        pintar();
+      });
+      m.addEventListener('change', (e) => {
+        const c = e.target.closest('[data-campo]');
+        if (!c) return;
+        if (c.checked) escolha.campos.add(c.dataset.campo); else escolha.campos.delete(c.dataset.campo);
+        pintar();
+      });
+      m.querySelectorAll('[data-predef]').forEach((b) => b.addEventListener('click', () => {
+        const p = PREDEFINIDOS[b.dataset.predef];
+        escolha.clientes = p.clientes;
+        escolha.campos = new Set(p.campos);
+        pintar();
+      }));
+      pintar();
+    },
+
+    aoConfirmar: () => ({ clientes: escolha.clientes, campos: [...escolha.campos] })
+  });
+}
+
+async function exportar() {
+  const escolha = await escolherExportacao();
+  if (!escolha) return;
+
+  const r = await chamar('exportar.encomenda', atual.id, { perguntar: true, ...escolha });
   if (!r) return;
 
   await modal({
-    titulo: 'Excel pronto para o fornecedor',
+    titulo: 'Excel pronto',
     confirmar: 'Mostrar na pasta',
     cancelar: 'Fechar',
     corpo: `
       ${caixa(`<b>${plural(r.camisolas, 'camisola', 'camisolas')} ${r.semClientes ? 'numa lista só' : `de ${plural(r.clientes, 'cliente', 'clientes')}`}</b>, ${(r.bytes / 1024).toFixed(0)} KB.
-        Sem preços nem contas${r.semClientes ? ', nem nomes de clientes' : ''} — só a lista de produção.`, 'ok')}
+        ${r.comPrecos ? 'Leva preços e totais.' : `Sem preços${r.semClientes ? ' nem nomes de clientes' : ''}.`}`, 'ok')}
       <div class="campo"><label>Ficheiro</label>
         <div class="pequeno" style="word-break:break-all;color:var(--tinta-2);font-weight:600">${esc(r.caminho)}</div></div>
       ${r.semFoto.length ? caixa(`${plural(r.semFoto.length, 'camisola foi', 'camisolas foram')} sem foto:<br>${r.semFoto.map(esc).join('<br>')}`) : ''}`,

@@ -125,10 +125,10 @@ const PADROES = [
   ['tamanhos', 'S,M,L,XL,XXL,24,26,28,30', 'texto', 'Sugestoes de tamanho'],
   ['titulo_exportacao', 'ENCOMENDA CAMISOLAS - {data}', 'texto', 'Titulo da primeira linha do Excel'],
   ['foto_max_px', '420', 'numero', 'Lado maior das fotos guardadas'],
-  ['export_altura_linha', '22', 'numero', 'Altura de cada uma das 4 linhas por camisola no Excel'],
   ['export_foto_altura', '108', 'numero', 'Altura da foto no Excel, em pixeis'],
   ['estampagem_nome_numero', '300', 'dinheiro', 'O que o fornecedor cobra a mais por nome E numero'],
-  ['estampagem_so_um', '200', 'dinheiro', 'O que cobra por so nome ou so numero']
+  ['estampagem_so_um', '200', 'dinheiro', 'O que cobra por so nome ou so numero'],
+  ['export_escolha', '', 'texto', 'O que foi escolhido para o Excel da ultima vez (JSON)']
 ];
 
 function correrMigracoes(db) {

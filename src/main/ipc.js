@@ -10,7 +10,11 @@ const camisolas = require('./db/repos/camisolas');
 const clientes = require('./db/repos/clientes');
 const encomendas = require('./db/repos/encomendas');
 const fotos = require('./servicos/fotos');
-const { exportar, nomeSugerido } = require('./servicos/exportar');
+const { exportar, nomeSugerido, normalizarEscolha, CAMPOS: CAMPOS_EXPORTAR } = require('./servicos/exportar');
+
+function lerJson(texto) {
+  try { return texto ? JSON.parse(texto) : null; } catch { return null; }
+}
 const { analisar, importar } = require('./servicos/importar');
 const copias = require('./servicos/copias');
 const atualizacoes = require('./servicos/atualizacoes');
@@ -123,7 +127,11 @@ function registarIpc({ janela }) {
     'linhas.reordenar': (encomendaId, ids) => encomendas.reordenar(encomendaId, ids),
 
     // --- exportacao ------------------------------------------------------
-    'exportar.encomenda': async (id, { perguntar = true, semClientes = false } = {}) => {
+    'exportar.opcoes': () => ({
+      campos: CAMPOS_EXPORTAR,
+      ultima: normalizarEscolha(lerJson(definicoes.ler('export_escolha', '')) || {})
+    }),
+    'exportar.encomenda': async (id, { perguntar = true, ...escolha } = {}) => {
       const encomenda = encomendas.porId(id);
       if (!encomenda) throw new Error('Encomenda nao encontrada.');
       if (!encomenda.totais.nCamisolas) throw new Error('Esta encomenda ainda nao tem camisolas.');
@@ -131,7 +139,7 @@ function registarIpc({ janela }) {
       let destino = path.join(pastaExportacao(), nomeSugerido(encomenda));
       if (perguntar) {
         const r = await dialog.showSaveDialog(janela(), {
-          title: 'Guardar o Excel para o fornecedor',
+          title: 'Guardar o Excel',
           defaultPath: destino,
           filters: [{ name: 'Excel', extensions: ['xlsx'] }]
         });
@@ -140,11 +148,13 @@ function registarIpc({ janela }) {
       }
 
       const resultado = await exportar(encomenda, destino, {
+        ...escolha,
         titulo: definicoes.ler('titulo_exportacao'),
-        alturaLinha: definicoes.ler('export_altura_linha'),
         alturaFoto: definicoes.ler('export_foto_altura'),
-        semClientes
+        moeda: definicoes.ler('moeda', '€')
       });
+      // Da proxima vez a janela abre com o que se escolheu agora.
+      definicoes.gravar('export_escolha', JSON.stringify(resultado.escolha));
       return resultado;
     },
     'exportar.mostrarNaPasta': (caminho) => shell.showItemInFolder(caminho),
