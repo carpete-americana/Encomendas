@@ -34,8 +34,8 @@ async function main() {
 
   const r = await exportar(encomenda, destino, {
     titulo: definicoes.ler('titulo_exportacao'),
-    alturaLinha: definicoes.ler('export_altura_linha'),
-    alturaFoto: definicoes.ler('export_foto_altura')
+    alturaFoto: definicoes.ler('export_foto_altura'),
+    moeda: definicoes.ler('moeda', '€')
   });
 
   console.log(`Escrito:    ${r.caminho}`);

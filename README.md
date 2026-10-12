@@ -5,8 +5,9 @@ Substitui o Excel como sítio onde se trabalha, e passa a **gerar** o Excel que 
 para o fornecedor.
 
 **A regra que manda em tudo:** na app fica o dinheiro todo (preços, margens, lucro,
-quem pagou); no Excel exportado vai só a lista de produção — item, tamanho,
-personalização, nome/número e a foto. Nenhum preço chega ao fornecedor.
+quem pagou). O Excel exportado, por omissão, é só a lista de produção — item,
+tamanho, personalização, nome/número e a foto. Os preços só lá entram se forem
+escolhidos ao exportar, e a janela avisa quando isso acontece.
 
 ## Correr
 
@@ -54,7 +55,22 @@ que lá estavam. Na app, a janela mostra tudo o que vai entrar **antes** de escr
 
 ## Exportar
 
-Botão **Exportar Excel** na página da encomenda, ou:
+Botão **Exportar Excel** na página da encomenda. Antes de gravar escolhe-se o que a
+folha leva, e da próxima vez a janela abre com a mesma escolha:
+
+- **Clientes**: agrupadas por cliente (um título por cliente), numa coluna ao lado
+  de cada camisola, ou sem nomes (uma lista só: o fornecedor não fica a saber para
+  quem é cada uma; o nome escrito na personalização vai na mesma, porque é para
+  estampar).
+- **O que aparece**: foto, tamanho, personalização, nome/número/símbolo, preço do
+  fornecedor, preço ao cliente, estado da chegada e pago. Com preços, saem como
+  números a sério, com subtotal por cliente e total no fim (fórmulas; as camisolas
+  para devolver ficam riscadas e não contam).
+- Dois atalhos: **Para o fornecedor** (sem nomes, sem preços) e **Para mim**.
+
+A folha tem uma linha por camisola, com a foto dentro da linha, e um só cabeçalho
+preso no topo (repetido em cada página ao imprimir). Pela linha de comandos sai
+com a escolha por omissão:
 
 ```bash
 node tools/exportar-cli.js <id-da-encomenda>
@@ -83,7 +99,7 @@ devolver" não aparecem, e se já pagou uma parte mostra o que falta.
 npm test
 ```
 
-82 testes: dinheiro em cêntimos, cascata de margens, totais, agrupamento,
+88 testes: dinheiro em cêntimos, cascata de margens, totais, agrupamento,
 normalização de nomes, a imagem para os clientes, e um teste de aceitação que importa o Excel real de
 28/06/2026 e o exporta de volta. Esse salta sozinho se o ficheiro não estiver
 na secretária.

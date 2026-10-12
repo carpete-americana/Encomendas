@@ -22,6 +22,7 @@ const existe = !!ORIGEM;
 const db = require('../src/main/db');
 const { importar } = require('../src/main/servicos/importar');
 const { exportar } = require('../src/main/servicos/exportar');
+const { lerFolha } = require('./_folha');
 const camisolas = require('../src/main/db/repos/camisolas');
 const clientes = require('../src/main/db/repos/clientes');
 const encomendas = require('../src/main/db/repos/encomendas');
@@ -109,58 +110,33 @@ test('exportar de volta nao leva preco nenhum', { skip: !existe && 'sem ficheiro
   await wb.xlsx.readFile(destino);
   const ws = wb.worksheets[0];
 
-  await t.test('a folha tem os 14 blocos e as 63 linhas', () => {
-    let nClientes = 0;
-    let nItens = 0;
-    for (let linha = 2; linha <= ws.rowCount; linha += 1) {
-      const c = ws.getCell(linha, 1);
-      if (c.isMerged && c.master && c.master.row !== linha) continue;
-      if (!c.value) continue;
-      const t2 = String(c.value).trim().toUpperCase();
-      if (String(ws.getCell(linha + 1, 1).value || '').trim().toUpperCase() === 'ITEM') { nClientes += 1; continue; }
-      if (t2 === 'ITEM') continue;
-      nItens += 1;
-    }
-    assert.equal(nClientes, 14);
-    assert.equal(nItens, 63);
+  const lido = lerFolha(ws);
+
+  await t.test('a folha tem os 14 clientes e as 63 camisolas', () => {
+    assert.equal(lido.clientes.length, 14);
+    assert.equal(lido.itens.length, 63);
   });
 
   await t.test('cada camisola levou a sua foto', () => {
     assert.equal(ws.getImages().length, 63);
   });
 
-  await t.test('nao ha uma unica celula numerica', () => {
-    // Um preco no Excel e sempre um numero. Zero numeros = zero precos.
+  await t.test('nao ha uma unica celula numerica fora do numero da linha', () => {
+    // Um preco no Excel e sempre um numero. So o "Nº" pode ser numero.
     let numeros = 0;
-    ws.eachRow((linha) => linha.eachCell((c) => { if (typeof c.value === 'number') numeros += 1; }));
+    ws.eachRow((linha) => linha.eachCell((c) => {
+      if (typeof c.value === 'number' && c.col !== 1) numeros += 1;
+      if (c.value && typeof c.value === 'object' && c.value.formula) numeros += 1;
+    }));
     assert.equal(numeros, 0, 'nenhum preco pode chegar ao fornecedor');
   });
 
-  await t.test('as colunas sao so as quatro da lista de producao', () => {
-    const cabecalhos = new Set();
-    ws.eachRow((linha) => linha.eachCell((c) => {
-      if (String(c.value).trim().toUpperCase() === 'ITEM') {
-        for (let col = 1; col <= 20; col += 1) {
-          const v = ws.getCell(linha.number, col).value;
-          if (v) cabecalhos.add(String(v).trim());
-        }
-      }
-    }));
-    assert.deepEqual([...cabecalhos].sort(), [
-      'ITEM', 'NOME - NUMERO - SIMBOLO', 'PERSONALIZAÇÃO', 'TAMANHO'
-    ].sort());
+  await t.test('as colunas sao so as da lista de producao', () => {
+    assert.deepEqual(lido.cabecalhos, ['Nº', 'FOTO', 'ITEM', 'TAMANHO', 'PERSONALIZAÇÃO', 'NOME - NÚMERO - SÍMBOLO']);
   });
 
   await t.test('a personalizacao e sempre SIM ou traco', () => {
-    const vistos = new Set();
-    ws.eachRow((linha) => {
-      const c = ws.getCell(linha.number, 6);
-      // O titulo e o nome do cliente estao fundidos em largura, por isso a
-      // coluna 6 devolve o valor da coluna A nessas linhas.
-      if (c.isMerged && c.master && c.master.address !== c.address) return;
-      if (c.value) vistos.add(String(c.value).trim());
-    });
-    vistos.delete('PERSONALIZAÇÃO');
+    const vistos = new Set(lido.itens.map((i) => String(i['PERSONALIZAÇÃO']).trim()));
     assert.deepEqual([...vistos].sort(), ['-', 'SIM']);
   });
 });

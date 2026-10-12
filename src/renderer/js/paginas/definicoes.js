@@ -57,7 +57,7 @@ export async function desenhar(raiz) {
       </section>
 
       <section class="def-secao">
-        <div><h3>Excel para o fornecedor</h3><p>Como sai a folha que envias. Leva camisola, tamanho, personalização, nome/número e foto — nunca preços.</p></div>
+        <div><h3>Excel da encomenda</h3><p>Como sai a folha. O que ela leva (fotos, clientes, preços...) escolhe-se de cada vez que se exporta.</p></div>
         <div style="display:flex;flex-direction:column;gap:16px">
           <div class="campo"><label>Título da primeira linha</label>
             <input name="titulo_exportacao" value="${esc(d.titulo_exportacao || '')}">
@@ -68,8 +68,7 @@ export async function desenhar(raiz) {
               <button class="btn" data-pasta>${icone('pasta', 16)}Escolher</button>
               <button class="btn fantasma" data-limpar-pasta>Repor</button>
             </div></div>
-          <div class="grelha-campos" style="grid-template-columns:repeat(3,minmax(0,1fr))">
-            <div class="campo"><label>Altura de cada linha</label><input name="export_altura_linha" type="number" min="10" max="60" value="${d.export_altura_linha}"></div>
+          <div class="grelha-campos" style="grid-template-columns:repeat(2,minmax(0,1fr))">
             <div class="campo"><label>Altura da foto (px)</label><input name="export_foto_altura" type="number" min="40" max="300" value="${d.export_foto_altura}"></div>
             <div class="campo"><label>Tamanho das fotos novas (px)</label><input name="foto_max_px" type="number" min="150" max="1200" value="${d.foto_max_px}"></div>
           </div>
@@ -195,7 +194,6 @@ export async function desenhar(raiz) {
       fornecedor: v('fornecedor'),
       tamanhos: v('tamanhos'),
       titulo_exportacao: v('titulo_exportacao'),
-      export_altura_linha: Number(v('export_altura_linha')) || 22,
       export_foto_altura: Number(v('export_foto_altura')) || 108,
       foto_max_px: Number(v('foto_max_px')) || 420,
       pasta_exportacao: v('pasta_exportacao')
