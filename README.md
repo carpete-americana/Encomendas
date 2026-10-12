@@ -54,7 +54,10 @@ que lá estavam. Na app, a janela mostra tudo o que vai entrar **antes** de escr
 
 ## Exportar
 
-Botão **Exportar Excel** na página da encomenda, ou:
+Botão **Exportar Excel** na página da encomenda. Pergunta se vai **com** ou **sem os
+nomes dos clientes**: sem eles sai uma lista só, com as camisolas todas seguidas e
+um cabeçalho, e o fornecedor não fica a saber para quem é cada uma (o nome escrito
+na personalização vai na mesma, porque é para estampar). Pela linha de comandos:
 
 ```bash
 node tools/exportar-cli.js <id-da-encomenda>
@@ -83,7 +86,7 @@ devolver" não aparecem, e se já pagou uma parte mostra o que falta.
 npm test
 ```
 
-82 testes: dinheiro em cêntimos, cascata de margens, totais, agrupamento,
+84 testes: dinheiro em cêntimos, cascata de margens, totais, agrupamento,
 normalização de nomes, a imagem para os clientes, e um teste de aceitação que importa o Excel real de
 28/06/2026 e o exporta de volta. Esse salta sozinho se o ficheiro não estiver
 na secretária.

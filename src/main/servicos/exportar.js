@@ -70,16 +70,24 @@ async function exportar(encomenda, destino, opcoes = {}) {
 
   const semFoto = [];
 
-  for (const grupo of encomenda.grupos) {
-    // Nome do cliente
-    ws.mergeCells(`${letra(1)}${linha}:${letra(COL_FOTO + 1)}${linha}`);
-    const cCliente = ws.getCell(linha, 1);
-    cCliente.value = (grupo.cliente_nome || '').toUpperCase();
-    cCliente.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
-    cCliente.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR_CLIENTE } };
-    cCliente.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-    ws.getRow(linha).height = 22;
-    linha += 1;
+  // Sem os nomes dos clientes sai uma lista so, com um cabecalho e as
+  // camisolas todas seguidas: o fornecedor nao fica a saber para quem sao.
+  const blocos = opcoes.semClientes
+    ? [{ cliente_nome: null, linhas: encomenda.grupos.flatMap((g) => g.linhas.map((l) => ({ ...l, cliente_nome: g.cliente_nome }))) }]
+    : encomenda.grupos;
+
+  for (const grupo of blocos) {
+    if (grupo.cliente_nome !== null) {
+      // Nome do cliente
+      ws.mergeCells(`${letra(1)}${linha}:${letra(COL_FOTO + 1)}${linha}`);
+      const cCliente = ws.getCell(linha, 1);
+      cCliente.value = (grupo.cliente_nome || '').toUpperCase();
+      cCliente.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+      cCliente.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COR_CLIENTE } };
+      cCliente.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+      ws.getRow(linha).height = 22;
+      linha += 1;
+    }
 
     // Cabecalho
     for (const c of COLUNAS) {
@@ -134,7 +142,7 @@ async function exportar(encomenda, destino, opcoes = {}) {
           editAs: 'oneCell'
         });
       } else {
-        semFoto.push(`${grupo.cliente_nome}: ${valores.item}`);
+        semFoto.push(`${l.cliente_nome || grupo.cliente_nome}: ${valores.item}`);
       }
 
       linha = ultima + 1;
@@ -151,6 +159,7 @@ async function exportar(encomenda, destino, opcoes = {}) {
     caminho: destino,
     bytes: stat.size,
     clientes: encomenda.grupos.length,
+    semClientes: !!opcoes.semClientes,
     camisolas: encomenda.totais.nCamisolas,
     semFoto
   };

@@ -123,7 +123,7 @@ function registarIpc({ janela }) {
     'linhas.reordenar': (encomendaId, ids) => encomendas.reordenar(encomendaId, ids),
 
     // --- exportacao ------------------------------------------------------
-    'exportar.encomenda': async (id, { perguntar = true } = {}) => {
+    'exportar.encomenda': async (id, { perguntar = true, semClientes = false } = {}) => {
       const encomenda = encomendas.porId(id);
       if (!encomenda) throw new Error('Encomenda nao encontrada.');
       if (!encomenda.totais.nCamisolas) throw new Error('Esta encomenda ainda nao tem camisolas.');
@@ -142,7 +142,8 @@ function registarIpc({ janela }) {
       const resultado = await exportar(encomenda, destino, {
         titulo: definicoes.ler('titulo_exportacao'),
         alturaLinha: definicoes.ler('export_altura_linha'),
-        alturaFoto: definicoes.ler('export_foto_altura')
+        alturaFoto: definicoes.ler('export_foto_altura'),
+        semClientes
       });
       return resultado;
     },
