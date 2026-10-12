@@ -1,5 +1,7 @@
 'use strict';
 
+const { decompor } = require('../servicos/nome-camisola');
+
 /**
  * Migracoes por numero de versao. Acrescenta-se ao fim, nunca se edita uma que
  * ja correu numa base real.
@@ -89,6 +91,29 @@ const MIGRACOES = [
     sql: `
       ALTER TABLE linhas ADD COLUMN devolvida INTEGER NOT NULL DEFAULT 0;
     `
+  },
+  {
+    versao: 4,
+    nome: 'camisola por equipa, epoca e equipamento',
+    // O nome passa a sair destes campos. As camisolas que ja existiam ficam com
+    // o nome que tinham; so se preenche o que se consegue ler nele, para as
+    // equipas aparecerem logo nas listas.
+    sql: `
+      ALTER TABLE camisolas ADD COLUMN tipo TEXT;
+      ALTER TABLE camisolas ADD COLUMN versao TEXT;
+      ALTER TABLE camisolas ADD COLUMN detalhe TEXT;
+      CREATE INDEX ix_camisolas_equipa ON camisolas(equipa);
+    `,
+    depois: (db) => {
+      for (const c of db.all('SELECT id, nome, equipa, epoca FROM camisolas')) {
+        const lido = decompor(c.nome);
+        if (!lido) continue;
+        db.run(
+          'UPDATE camisolas SET equipa = ?, epoca = ?, tipo = ?, versao = ?, detalhe = ? WHERE id = ?',
+          [c.equipa || lido.equipa, c.epoca || lido.epoca, lido.tipo, lido.versao, lido.detalhe, c.id]
+        );
+      }
+    }
   }
 ];
 
@@ -115,6 +140,7 @@ function correrMigracoes(db) {
     db.run('BEGIN');
     try {
       db.exec(m.sql);
+      if (m.depois) m.depois(db);
       db.run('INSERT INTO schema_versao (versao, nome, corrida_em) VALUES (?, ?, ?)', [
         m.versao,
         m.nome,

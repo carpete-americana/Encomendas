@@ -83,7 +83,7 @@ devolver" não aparecem, e se já pagou uma parte mostra o que falta.
 npm test
 ```
 
-73 testes: dinheiro em cêntimos, cascata de margens, totais, agrupamento,
+82 testes: dinheiro em cêntimos, cascata de margens, totais, agrupamento,
 normalização de nomes, a imagem para os clientes, e um teste de aceitação que importa o Excel real de
 28/06/2026 e o exporta de volta. Esse salta sozinho se o ficheiro não estiver
 na secretária.
@@ -154,9 +154,14 @@ o aviso do SmartScreen nessa primeira instalação.
   O catálogo guarda sempre a **camisola lisa**; a estampagem entra na linha.
   Ligar ou desligar a personalização numa linha ajusta os dois preços sozinha.
 - **Os preços importados dos Excel antigos já incluíam a estampagem**, por isso o
-  importador marca-os como finais (`precos_finais`) e não soma nada. O catálogo
-  tem uma revisão (botão "Rever preços") para as camisolas que só foram pedidas
-  personalizadas e cujo preço de catálogo ficou com o extra lá dentro.
+  importador marca-os como finais (`precos_finais`) e não soma nada.
+- **Uma camisola define-se por equipa, época e equipamento** (principal, alternativo,
+  terceiro, guarda-redes, especial, treino), mais a versão (adepto, jogador, retro) e
+  um detalhe opcionais. O nome não se escreve: sai destes campos, em inglês como os
+  fornecedores os usam ("Benfica 2025/26 Away Kit Player Version"), e é esse que vai no
+  Excel. Mudar um campo refaz o nome. As camisolas que já existiam ficaram com o nome
+  que tinham; a migração só leu nele a equipa, o ano e o equipamento quando os
+  encontrou. Uma camisola nova escrita numa encomenda abre a ficha para se escolher.
 - **"Em falta" quer dizer "para devolver".** A camisola volta para trás, por isso
   não é vendida: sai do que pagas ao fornecedor, do que cobras, do lucro e do que
   o cliente deve. A linha fica na encomenda, riscada, e os números mostram quantas

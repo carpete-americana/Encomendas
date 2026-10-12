@@ -15,6 +15,7 @@ const { analisar, importar } = require('./servicos/importar');
 const copias = require('./servicos/copias');
 const atualizacoes = require('./servicos/atualizacoes');
 const { calcularTotais } = require('./servicos/totais');
+const nomeCamisola = require('./servicos/nome-camisola');
 const { htmlCliente, linhasParaCliente } = require('./servicos/imagem-cliente');
 
 function pastaExportacao() {
@@ -54,18 +55,16 @@ function registarIpc({ janela }) {
     // --- catalogo --------------------------------------------------------
     'camisolas.listar': (opcoes) => camisolas.listar(opcoes || {}),
     'camisolas.porId': (id) => camisolas.porId(id),
-    'camisolas.criar': (dados) => camisolas.criarOuObter(dados),
+    'camisolas.criar': (dados) => camisolas.criarPorCampos(dados),
+    'camisolas.porNome': (nome) => camisolas.porChave(nome),
+    'camisolas.equipas': () => camisolas.equipas(),
+    'camisolas.epocas': () => camisolas.epocas(),
+    'camisolas.opcoes': () => ({ tipos: nomeCamisola.TIPOS, versoes: nomeCamisola.VERSOES }),
+    'camisolas.nomeDe': (campos) => nomeCamisola.nomeDe(campos),
+    'camisolas.decompor': (nome) => nomeCamisola.decompor(nome),
     'camisolas.atualizar': (id, dados) => camisolas.atualizar(id, dados),
     'camisolas.historico': (id) => camisolas.historico(id),
     'camisolas.apagar': (id) => camisolas.apagar(id),
-    'camisolas.precosComEstampagem': () => camisolas.precosComEstampagemIncluida({
-      nomeNumero: definicoes.ler('estampagem_nome_numero', 0),
-      soUm: definicoes.ler('estampagem_so_um', 0)
-    }),
-    'camisolas.corrigirPrecos': (lista) => {
-      copias.criar('antes-de-corrigir-precos');
-      return camisolas.corrigirPrecos(lista);
-    },
     'camisolas.fundir': (idFica, idsJuntar) => {
       copias.criar('antes-de-juntar');
       return camisolas.fundir(idFica, idsJuntar);

@@ -2,6 +2,9 @@
 
 const { base, transacao } = require('../index');
 const { chave: chaveDe, limpar } = require('../../servicos/texto');
+const { nomeDe, emFalta, decompor } = require('../../servicos/nome-camisola');
+
+const CAMPOS_NOME = ['equipa', 'epoca', 'tipo', 'versao', 'detalhe'];
 
 const SELECT_BASE = `
   SELECT c.*,
@@ -11,11 +14,15 @@ const SELECT_BASE = `
   FROM camisolas c
 `;
 
-function listar({ procura = '', incluirArquivadas = false, ordem = 'nome' } = {}) {
+function listar({ procura = '', incluirArquivadas = false, ordem = 'nome', equipa = '' } = {}) {
   const condicoes = [];
   const params = [];
 
   if (!incluirArquivadas) condicoes.push('c.arquivada = 0');
+  if (equipa) {
+    condicoes.push('c.equipa = ? COLLATE NOCASE');
+    params.push(equipa);
+  }
   if (procura.trim()) {
     condicoes.push('(c.chave LIKE ? OR LOWER(COALESCE(c.equipa, \'\')) LIKE ?)');
     const p = `%${chaveDe(procura)}%`;
@@ -41,14 +48,65 @@ function porChave(nome) {
   return base().get(`${SELECT_BASE} WHERE c.chave = ?`, [chaveDe(nome)]) || null;
 }
 
+/** As equipas que ja estao no catalogo, para as listas de escolha. */
+function equipas() {
+  return base().all(
+    `SELECT equipa AS nome, COUNT(*) AS camisolas FROM camisolas
+     WHERE equipa IS NOT NULL AND TRIM(equipa) <> ''
+     GROUP BY equipa COLLATE NOCASE ORDER BY equipa COLLATE NOCASE`
+  );
+}
+
+/** As epocas ja usadas, da mais recente para a mais antiga. */
+function epocas() {
+  return base().all(
+    `SELECT DISTINCT epoca FROM camisolas WHERE epoca IS NOT NULL AND TRIM(epoca) <> ''
+     ORDER BY epoca DESC`
+  ).map((l) => l.epoca);
+}
+
+function erroRepetida(nome) {
+  return new Error(`Já existe a camisola "${nome}" no catálogo.`);
+}
+
+/**
+ * Camisola nova feita a partir dos campos (equipa, epoca, equipamento...). O
+ * nome sai deles, nao e escrito. Ao contrario do criarOuObter, uma repetida e
+ * um erro: quem a esta a criar a mao tem de saber que ja la estava.
+ */
+function criarPorCampos(dados) {
+  const falta = emFalta(dados);
+  if (falta) throw new Error(`Falta escolher ${falta}.`);
+  const nome = nomeDe(dados);
+  const existente = porChave(nome);
+  if (existente) throw erroRepetida(existente.nome);
+  return criarOuObter({ ...dados, nome });
+}
+
 /**
  * Cria a camisola, ou devolve a que ja existe com o mesmo nome normalizado.
  * E este `ou devolve` que faz o catalogo crescer sozinho: cada camisola nova
  * escrita numa encomenda fica guardada para a proxima.
  */
-function criarOuObter({ nome, equipa = null, epoca = null, foto = null, preco_fornecedor = null, notas = null }) {
+function criarOuObter({
+  nome, equipa = null, epoca = null, tipo = null, versao = null, detalhe = null,
+  foto = null, preco_fornecedor = null, notas = null
+}) {
   const limpo = limpar(nome);
   if (!limpo) throw new Error('A camisola precisa de um nome.');
+
+  // Um nome escrito (do Excel antigo) fica como esta, mas o que se conseguir
+  // ler nele vai para os campos: e assim que a equipa aparece nas listas.
+  if (!equipa) {
+    const lido = decompor(limpo);
+    if (lido) {
+      equipa = lido.equipa;
+      epoca = epoca || lido.epoca;
+      tipo = tipo || lido.tipo;
+      versao = versao || lido.versao;
+      detalhe = detalhe || lido.detalhe;
+    }
+  }
 
   return transacao(() => {
     const existente = porChave(limpo);
@@ -60,7 +118,9 @@ function criarOuObter({ nome, equipa = null, epoca = null, foto = null, preco_fo
       if (existente.preco_fornecedor === null && preco_fornecedor !== null) {
         campos.push('preco_fornecedor = ?'); params.push(preco_fornecedor);
       }
-      if (!existente.equipa && equipa) { campos.push('equipa = ?'); params.push(equipa); }
+      for (const [campo, valor] of Object.entries({ equipa, epoca, tipo, versao, detalhe })) {
+        if (!existente[campo] && valor) { campos.push(`${campo} = ?`); params.push(valor); }
+      }
       if (campos.length) {
         params.push(existente.id);
         base().run(`UPDATE camisolas SET ${campos.join(', ')} WHERE id = ?`, params);
@@ -69,16 +129,35 @@ function criarOuObter({ nome, equipa = null, epoca = null, foto = null, preco_fo
     }
 
     const r = base().run(
-      `INSERT INTO camisolas (nome, chave, equipa, epoca, foto, preco_fornecedor, notas, criada_em)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [limpo, chaveDe(limpo), equipa, epoca, foto, preco_fornecedor, notas, new Date().toISOString()]
+      `INSERT INTO camisolas (nome, chave, equipa, epoca, tipo, versao, detalhe, foto, preco_fornecedor, notas, criada_em)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [limpo, chaveDe(limpo), limpar(equipa) || null, limpar(epoca) || null, tipo || null, versao || null,
+        limpar(detalhe) || null, foto, preco_fornecedor, notas, new Date().toISOString()]
     );
     return porId(r.lastInsertRowid);
   });
 }
 
+/**
+ * Mexer na equipa, epoca, equipamento, versao ou detalhe refaz o nome. So se
+ * escreve o nome diretamente quando nenhum desses vem nos dados.
+ */
 function atualizar(id, dados) {
-  const permitidos = ['nome', 'equipa', 'epoca', 'foto', 'preco_fornecedor', 'notas', 'arquivada'];
+  dados = { ...dados };
+  if (CAMPOS_NOME.some((c) => c in dados)) {
+    const atual = porId(id);
+    if (!atual) throw new Error('Camisola nao encontrada.');
+    const juntos = { ...atual, ...dados };
+    const falta = emFalta(juntos);
+    if (falta) throw new Error(`Falta escolher ${falta}.`);
+    dados.nome = nomeDe(juntos);
+    const outra = porChave(dados.nome);
+    if (outra && outra.id !== Number(id)) {
+      throw new Error(`Já existe a camisola "${outra.nome}" no catálogo. Usa "Juntar com outra camisola" se forem a mesma.`);
+    }
+  }
+
+  const permitidos = ['nome', ...CAMPOS_NOME, 'foto', 'preco_fornecedor', 'notas', 'arquivada'];
   const campos = [];
   const params = [];
 
@@ -146,7 +225,9 @@ function fundir(idFica, idsJuntar) {
         campos.push('preco_fornecedor = ?'); params.push(outra.preco_fornecedor);
       }
       if (!atual.equipa && outra.equipa) { campos.push('equipa = ?'); params.push(outra.equipa); }
-      if (!atual.epoca && outra.epoca) { campos.push('epoca = ?'); params.push(outra.epoca); }
+      for (const campo of ['epoca', 'tipo', 'versao', 'detalhe']) {
+        if (!atual[campo] && outra[campo]) { campos.push(`${campo} = ?`); params.push(outra[campo]); }
+      }
       if (campos.length) {
         params.push(fica.id);
         base().run(`UPDATE camisolas SET ${campos.join(', ')} WHERE id = ?`, params);
@@ -156,57 +237,6 @@ function fundir(idFica, idsJuntar) {
     }
 
     return { camisola: porId(fica.id), linhasMovidas, juntadas: nomes };
-  });
-}
-
-/**
- * Camisolas cujo preco de catalogo traz a estampagem la dentro. Acontece com o
- * que veio dos Excel antigos: se a camisola so foi pedida personalizada, o
- * preco que ficou guardado e o da camisola MAIS a estampagem. Pedi-la de novo
- * personalizada somaria o extra outra vez.
- *
- * So aponta o dedo; corrigir e um passo a parte, confirmado a mao.
- */
-function precosComEstampagemIncluida({ nomeNumero = 0, soUm = 0 } = {}) {
-  const { custoEstampagem } = require('../../servicos/precos');
-
-  return base().all(
-    `SELECT c.id, c.nome, c.preco_fornecedor,
-            COUNT(l.id) AS linhas,
-            SUM(CASE WHEN l.personalizacao = 1 THEN 1 ELSE 0 END) AS com_estampagem
-     FROM camisolas c JOIN linhas l ON l.camisola_id = c.id
-     WHERE c.preco_fornecedor IS NOT NULL
-     GROUP BY c.id
-     HAVING linhas = com_estampagem`
-  ).map((c) => {
-    // O extra sai do que foi escrito nas linhas dela, nao de um palpite.
-    const textos = base().all(
-      'SELECT personalizacao_texto FROM linhas WHERE camisola_id = ? AND personalizacao = 1', [c.id]
-    ).map((l) => l.personalizacao_texto);
-
-    const extra = Math.min(...textos.map((t) => custoEstampagem(t, { nomeNumero, soUm })));
-    const combina = base().get(
-      'SELECT COUNT(*) AS n FROM linhas WHERE camisola_id = ? AND preco_fornecedor = ?', [c.id, c.preco_fornecedor]
-    ).n > 0;
-
-    return {
-      ...c,
-      extra,
-      preco_sugerido: Math.max(0, c.preco_fornecedor - extra),
-      confianca: combina ? 'alta' : 'baixa'
-    };
-  }).filter((c) => c.extra > 0 && c.preco_sugerido > 0);
-}
-
-/** Grava os precos revistos. Recebe [{ id, preco_fornecedor }]. */
-function corrigirPrecos(lista) {
-  return transacao(() => {
-    let n = 0;
-    for (const { id, preco_fornecedor: preco } of lista) {
-      if (preco === null || preco === undefined) continue;
-      n += base().run('UPDATE camisolas SET preco_fornecedor = ? WHERE id = ?', [preco, id]).changes;
-    }
-    return n;
   });
 }
 
@@ -221,6 +251,5 @@ function apagar(id) {
 }
 
 module.exports = {
-  listar, porId, porChave, criarOuObter, atualizar, historico, apagar, fundir,
-  precosComEstampagemIncluida, corrigirPrecos
+  listar, porId, porChave, criarOuObter, criarPorCampos, equipas, epocas, atualizar, historico, apagar, fundir
 };

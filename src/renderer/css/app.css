@@ -609,6 +609,7 @@ tr:hover .acoes-linha, .acoes-linha:focus-within { opacity: 1; }
   display: flex; align-items: center; gap: 11px; padding: 7px 9px; border-radius: 7px; cursor: pointer; font-size: 13px;
 }
 .sugestoes > div:hover, .sugestoes > div.marcada { background: var(--acento-suave); }
+.modal .sugestoes { max-height: 230px; }
 .sugestoes .nova { color: var(--acento-escuro); font-weight: 700; }
 .sugestoes .foto.mini { width: 38px; height: 38px; }
 

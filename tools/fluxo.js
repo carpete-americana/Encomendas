@@ -82,6 +82,19 @@ app.whenReady().then(async () => {
     f.querySelector('[name="preco"]').value = '10';
     f.querySelector('[data-adicionar]').click();
   })()`);
+  await esperar(700);
+
+  // A camisola ainda nao existe: abre-se a ficha, ja com os campos lidos no texto.
+  const ficha = await js(`(() => {
+    const m = document.querySelector('.modal');
+    if (!m) return null;
+    const v = (n) => m.querySelector('[name="' + n + '"]').value;
+    return { equipa: v('equipa'), epoca: v('epoca'), tipo: v('tipo'), preco: v('preco') };
+  })()`);
+  verificar('abriu a ficha da camisola nova com os campos preenchidos',
+    ficha && ficha.equipa === 'Portugal' && ficha.epoca === '2026' && ficha.tipo === 'principal' && ficha.preco === '10',
+    JSON.stringify(ficha));
+  await js("document.querySelector('.modal [data-ok]').click()");
   await esperar(900);
 
   verificar('apareceu um grupo de cliente',
@@ -216,12 +229,14 @@ app.whenReady().then(async () => {
   // ---------------------------------------------------------------------
   console.log('\nOutro cliente, e a margem propria dele');
   await jsA("await window.api.chamar('clientes.criar', { nome: 'Gabriel / Sara', margem_override: 0 })");
+  // Ja esta no catalogo: escrever o nome inteiro encontra-a, sem abrir a ficha.
+  await jsA("await window.api.chamar('camisolas.criar', { equipa: 'Sporting', epoca: '2000/01', tipo: 'principal' })");
   await js(`location.hash = '#/painel'; location.hash = '#/encomenda/${encomenda.id}'`);
   await esperar(800);
   await js(`(() => {
     const f = document.querySelector('[data-form]');
     f.querySelector('[name="cliente"]').value = 'Gabriel / Sara';
-    f.querySelector('[name="camisola"]').value = 'Sporting 2000/01';
+    f.querySelector('[name="camisola"]').value = 'Sporting 2000/01 Home Kit';
     f.querySelector('[name="preco"]').value = '10';
     f.querySelector('[data-adicionar]').click();
   })()`);
@@ -253,7 +268,7 @@ app.whenReady().then(async () => {
   const { nativeImage } = require('electron');
   const sharp = require('sharp');
   const camisolaSemFoto = (await jsA("await window.api.chamar('camisolas.listar', {})"))
-    .find((c) => c.nome === 'Sporting 2000/01');
+    .find((c) => c.nome === 'Sporting 2000/01 Home Kit');
 
   clipboard.clear();
   await js(`location.hash = '#/catalogo'`);
@@ -284,14 +299,14 @@ app.whenReady().then(async () => {
   await esperar(700);
   const azul = await sharp({ create: { width: 300, height: 500, channels: 3, background: '#1D4ED8' } }).png().toBuffer();
   clipboard.writeImage(nativeImage.createFromBuffer(azul));
-  await js("document.querySelector('.fundo-modal [name=\"nome\"]').focus()");
-  const nomeAntes = await js("document.querySelector('.fundo-modal [name=\"nome\"]').value");
+  await js("document.querySelector('.fundo-modal [name=\"detalhe\"]').focus()");
+  const nomeAntes = await js("document.querySelector('.fundo-modal [name=\"detalhe\"]').value");
   janela.webContents.paste();
   await esperar(1200);
   verificar('o Ctrl+V meteu a foto na previa',
     (await js("document.querySelector('[data-previa]').style.backgroundImage")).startsWith('url('));
-  verificar('e nao escreveu nada no campo do nome',
-    (await js("document.querySelector('.fundo-modal [name=\"nome\"]').value")) === nomeAntes);
+  verificar('e nao escreveu nada no campo de texto',
+    (await js("document.querySelector('.fundo-modal [name=\"detalhe\"]').value")) === nomeAntes);
   await js("document.querySelector('.fundo-modal [data-ok]').click()");
   await esperar(800);
 
